@@ -1,0 +1,55 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: fellowship-db
+    restart: always
+    env_file: ./db.env
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - fellowship-net
+
+  backend1:
+    image: reetwiz/backend1:2.0.0
+    container_name: fellowship-backend1
+    restart: always
+    env_file: ./backend1/.env
+    depends_on:
+      - postgres
+    ports:
+      - "3000:3000"
+    networks:
+      - fellowship-net
+
+  backend2:
+    image: reetwiz/backend2:2.0.0
+    container_name: fellowship-backend2
+    restart: always
+    env_file: ./backend2/.env
+    depends_on:
+      - postgres
+    ports:
+      - "3001:3001"
+    networks:
+      - fellowship-net
+
+  frontend:
+    image: reetwiz/frontend:2.0.0
+    container_name: fellowship-frontend
+    restart: always
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend1
+      - backend2
+    networks:
+      - fellowship-net
+
+volumes:
+  db_data:
+
+networks:
+  fellowship-net:
+    driver: bridge
