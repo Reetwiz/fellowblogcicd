@@ -15,7 +15,9 @@ const app: Application = express();
 const corsOptions = {
   origin: [
     'http://localhost:8080',
-    'http://192.168.128.9090', 
+    'http://localhost:80',
+    'http://192.168.226.128:80', 
+    'http://192.168.226.128:8080', 
     // 'https://your-production-domain.com'
   ],
   credentials: true, // Uncomment if you use cookies/auth

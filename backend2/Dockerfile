@@ -8,4 +8,4 @@ COPY . .
 
 EXPOSE 3001
 
-CMD ["sh", "-c", "yarn migrate && yarn start"]
+CMD ["yarn", "start"]
