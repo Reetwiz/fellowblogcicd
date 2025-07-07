@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import * as blogService from "../services/BlogService";
 
-// CD test backend2.
+// CD test backend2
 function getClerkUserId(req: Request): string | undefined {
   // ClerkExpressRequireAuth middleware attaches userId to req.auth.userId
   return (req as any).auth?.userId;

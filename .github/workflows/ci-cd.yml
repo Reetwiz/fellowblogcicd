@@ -113,8 +113,10 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ matrix.service }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+          # cache-from: type=gha,scope=${{ matrix.service }}
+          # cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+          cache-from: type=local,src=/tmp/.buildx-cache-${{ matrix.service }}
+          cache-to: type=local,mode=max,dest=/tmp/.buildx-cache-${{ matrix.service }}
           build-args: |
             ${{ matrix.service == 'frontend' && format('VITE_CLERK_PUBLISHABLE_KEY={0}', vars.VITE_CLERK_PUBLISHABLE_KEY) || '' }}
             ${{ matrix.service == 'frontend' && format('VITE_BACKEND1_BASE_URL={0}', vars.VITE_BACKEND1_BASE_URL) || '' }}
@@ -222,6 +224,7 @@ jobs:
         with:
           node-version: '20'
           cache: 'yarn'
+          cache-dependency-path: frontend/yarn.lock
       - name: Build Frontend with Yarn
         if: needs.changes.outputs.frontend == 'true'
         run: |
