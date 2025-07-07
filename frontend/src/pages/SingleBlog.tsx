@@ -1,3 +1,4 @@
+// CD test frontend.
 import { useAuth, useUser } from "@clerk/clerk-react";
 import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
 import PersonIcon from "@mui/icons-material/Person";
