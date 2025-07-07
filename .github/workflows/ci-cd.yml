@@ -9,9 +9,10 @@ on:
       - 'backend1/**'
       - 'backend2/**'
       - 'frontend/**'
+      # - '.github/workflows/ci-cd.yml'
       - 'docker-compose.prod.yml'
-    paths-ignore:
-      - '**.md'
+      - '!**.md'
+      - '!**/README.md' 
 
 permissions:
   contents: write 
