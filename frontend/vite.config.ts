@@ -1,8 +1,8 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// https://vite.dev/config/
 export default defineConfig({
-  base: '/reetwiz-fellowblogs-cd/', 
   plugins: [react()],
+  // This tells Vite to add "/reetwiz-fellowblogs-cd/" before all asset links.
+  base: '/reetwiz-fellowblogs-cd/', 
 })
