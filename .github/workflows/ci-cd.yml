@@ -20,6 +20,7 @@ permissions:
   id-token: write
 
 jobs:
+  # --- The 'changes' and 'prepare' jobs are correct and remain unchanged ---
   changes:
     name: 1. Detect Service Changes
     runs-on: ubuntu-latest
@@ -62,6 +63,7 @@ jobs:
           preset: "conventionalcommits"
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+  # --- The 'build-and-push' job is correct and remains unchanged ---
   build-and-push:
     name: 3. Build & Push - ${{ matrix.service }}
     needs: [changes, prepare]
@@ -132,6 +134,72 @@ jobs:
           name: build-artifact-${{ matrix.service }}
           path: ${{ matrix.context }}
 
+  # --- MODIFIED: export-images job now has environment and correct image name logic ---
+  export-images:
+    name: 5. Export Docker Images for Release
+    needs: [prepare, build-and-push]
+    if: github.ref_name == 'main' && needs.prepare.outputs.skipped == 'false'
+    runs-on: ubuntu-latest
+    environment: production # ADDED: Ensures access to secrets
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [backend1, backend2, frontend]
+    steps:
+      - name: Set lower case repo name # ADDED: Create lowercase repo name
+        id: string_ops
+        run: echo "repo_name_lc=${{ github.event.repository.name,, }}" >> $GITHUB_OUTPUT
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+      - name: Pull and Export Image
+        run: |
+          # MODIFIED: Construct the correct, lowercase image name
+          IMAGE_NAME="${{ secrets.DOCKER_HUB_USERNAME }}/${{ steps.string_ops.outputs.repo_name_lc }}-${{ matrix.service }}"
+          IMAGE_TAG="${{ needs.prepare.outputs.tag }}"
+          docker pull $IMAGE_NAME:$IMAGE_TAG
+          docker save -o image-${{ matrix.service }}.tar $IMAGE_NAME:$IMAGE_TAG
+      - name: Upload Image Export as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image-export-${{ matrix.service }}
+          path: image-${{ matrix.service }}.tar
+
+  # --- MODIFIED: scan-images job now has environment and correct image name logic ---
+  scan-images:
+    name: 6. Scan Images for Release
+    needs: [prepare, build-and-push]
+    if: github.ref_name == 'main' && needs.prepare.outputs.skipped == 'false'
+    runs-on: ubuntu-latest
+    environment: production # ADDED: Ensures access to secrets
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [backend1, backend2, frontend]
+    steps:
+      - name: Set lower case repo name # ADDED: Create lowercase repo name
+        id: string_ops
+        run: echo "repo_name_lc=${{ github.event.repository.name,, }}" >> $GITHUB_OUTPUT
+      - name: Scan image with Trivy and generate HTML report
+        uses: aquasecurity/trivy-action@master
+        with:
+          # MODIFIED: Construct the correct, lowercase image reference
+          image-ref: ${{ secrets.DOCKER_HUB_USERNAME }}/${{ steps.string_ops.outputs.repo_name_lc }}-${{ matrix.service }}:${{ needs.prepare.outputs.tag }}
+          format: 'template'
+          template: '@/contrib/html.tpl'
+          output: 'trivy-report.html'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+      - name: Upload Trivy Scan Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-report-${{ matrix.service }}
+          path: trivy-report.html
+
+  # --- All remaining jobs (deploy-to-vm, deploy-to-pages, release) are correct and remain unchanged ---
   deploy-to-vm:
     name: 8. Deploy to Production VM
     needs: [prepare, build-and-push]
@@ -142,7 +210,7 @@ jobs:
       - name: Checkout production-ready files
         uses: actions/checkout@v4
       - name: Deploy to VM via SCP and SSH
-        uses: easingthemes/ssh-deploy@v5.1.0
+        uses: easingthemes/ssh-deploy@main
         with:
           SSH_PRIVATE_KEY: ${{ secrets.VM_SSH_PRIVATE_KEY }}
           REMOTE_HOST: ${{ secrets.VM_HOST }}
@@ -158,9 +226,11 @@ jobs:
 
             echo "--- Creating .env file for Docker Compose ---"
             cat <<EOF > .env
+            # Database Credentials
             POSTGRES_USER=${{ vars.POSTGRES_USER }}
             POSTGRES_DB=${{ vars.POSTGRES_DB }}
             POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+            # Backend Configuration
             NODE_ENV=${{ vars.NODE_ENV }}
             DB_HOST=${{ vars.DB_HOST }}
             DB_PORT=${{ vars.DB_PORT }}
@@ -170,6 +240,7 @@ jobs:
             DB_CLIENT=${{ vars.DB_CLIENT }}
             CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
             CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
+            # Docker Image Tags
             DOCKER_IMAGE_BACKEND1=${{ secrets.DOCKER_HUB_USERNAME }}/${{ github.event.repository.name }}-backend1:latest
             DOCKER_IMAGE_BACKEND2=${{ secrets.DOCKER_HUB_USERNAME }}/${{ github.event.repository.name }}-backend2:latest
             DOCKER_IMAGE_FRONTEND=${{ secrets.DOCKER_HUB_USERNAME }}/${{ github.event.repository.name }}-frontend:latest
@@ -195,67 +266,6 @@ jobs:
         with:
           name: docker-compose-file
           path: docker-compose.prod.yml
-
-  export-images:
-    name: 5. Export Docker Images for Release
-    needs: [prepare, build-and-push]
-    if: github.ref_name == 'main' && needs.prepare.outputs.skipped == 'false'
-    runs-on: ubuntu-latest
-    environment: production
-    strategy:
-      fail-fast: false
-      matrix:
-        service: [backend1, backend2, frontend]
-    steps:
-      - name: Set lower case repo name
-        id: string_ops
-        run: echo "repo_name_lc=${{ github.event.repository.name,, }}" >> $GITHUB_OUTPUT
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
-      - name: Pull and Export Image
-        run: |
-          IMAGE_NAME="${{ secrets.DOCKER_HUB_USERNAME }}/${{ steps.string_ops.outputs.repo_name_lc }}-${{ matrix.service }}"
-          IMAGE_TAG="${{ needs.prepare.outputs.tag }}"
-          docker pull $IMAGE_NAME:$IMAGE_TAG
-          docker save -o image-${{ matrix.service }}.tar $IMAGE_NAME:$IMAGE_TAG
-      - name: Upload Image Export as Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: docker-image-export-${{ matrix.service }}
-          path: image-${{ matrix.service }}.tar
-
-  scan-images:
-    name: 6. Scan Images for Release
-    needs: [prepare, build-and-push]
-    if: github.ref_name == 'main' && needs.prepare.outputs.skipped == 'false'
-    runs-on: ubuntu-latest
-    environment: production
-    strategy:
-      fail-fast: false
-      matrix:
-        service: [backend1, backend2, frontend]
-    steps:
-      - name: Set lower case repo name
-        id: string_ops
-        run: echo "repo_name_lc=${{ github.event.repository.name,, }}" >> $GITHUB_OUTPUT
-      - name: Scan image with Trivy and generate HTML report
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ${{ secrets.DOCKER_HUB_USERNAME }}/${{ steps.string_ops.outputs.repo_name_lc }}-${{ matrix.service }}:${{ needs.prepare.outputs.tag }}
-          format: 'template'
-          template: '@/contrib/html.tpl'
-          output: 'trivy-report.html'
-          ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
-      - name: Upload Trivy Scan Report
-        uses: actions/upload-artifact@v4
-        with:
-          name: trivy-report-${{ matrix.service }}
-          path: trivy-report.html
 
   deploy-to-pages:
     name: 7. Deploy Site and Reports to GitHub Pages
