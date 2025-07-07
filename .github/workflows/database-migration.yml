@@ -1,0 +1,52 @@
+name: Manual Database Migration
+
+on:
+  workflow_dispatch:
+    inputs:
+      service:
+        description: 'Which backend service to migrate?'
+        required: true
+        type: choice
+        options:
+          - backend1
+          - backend2
+      action:
+        description: 'Action to perform'
+        required: true
+        type: choice
+        options:
+          - migrate
+          - rollback
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - development
+          - production
+
+jobs:
+  run-migration:
+    name: Run ${{ inputs.action }} on ${{ inputs.service }}
+    runs-on: backend-runner
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'yarn'
+          cache-dependency-path: '${{ inputs.service }}/yarn.lock'
+      - name: Install dependencies
+        run: yarn --cwd ${{ inputs.service }} install
+      - name: Run Knex command
+        working-directory: ${{ inputs.service }}
+        env:
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_CLIENT: pg
+          NODE_ENV: local
+        run: yarn ${{ inputs.action }}

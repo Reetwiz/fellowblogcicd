@@ -6,37 +6,31 @@ services:
     env_file: ./db.env
     volumes:
       - db_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
     networks:
       - fellowship-net
 
   backend1:
-    image: reetwiz/backend1:2.0.0
+    image: reetwiz/fellowblogs-backend1-prod:${TAG:-latest}
     container_name: fellowship-backend1
     restart: always
     env_file: ./backend1/.env
     depends_on:
       - postgres
-    ports:
-      - "3000:3000"
     networks:
       - fellowship-net
 
   backend2:
-    image: reetwiz/backend2:2.0.0
+    image: reetwiz/fellowblogs-backend2-prod:${TAG:-latest}
     container_name: fellowship-backend2
     restart: always
     env_file: ./backend2/.env
     depends_on:
       - postgres
-    ports:
-      - "3001:3001"
     networks:
       - fellowship-net
 
   frontend:
-    image: reetwiz/frontend:2.0.0
+    image: reetwiz/fellowblogs-frontend-prod:${TAG:-latest}
     container_name: fellowship-frontend
     restart: always
     ports:

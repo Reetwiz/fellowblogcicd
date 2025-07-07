@@ -1,34 +1,50 @@
-import React from "react";
-import { Link } from "react-router-dom";
+import AddIcon from "@mui/icons-material/Add";
+import DownloadIcon from '@mui/icons-material/Download';
 import {
     AppBar,
-    Toolbar,
-    Typography,
-    Button,
-    Container,
     Box,
+    Button,
     Card,
-    CardContent,
     CardActionArea,
+    CardContent,
+    Container,
     Paper,
     Stack,
+    Toolbar,
+    Typography,
 } from "@mui/material";
-import AddIcon from "@mui/icons-material/Add";
+import React from "react";
+import { Link } from "react-router-dom";
 import { useAllBlogs } from "../hooks/useBlogData";
 
 const AllBlogs: React.FC = () => {
     const { blogs, loading, error } = useAllBlogs();
 
+    const handleDownloadArtifacts = () => {
+        const repoUrl = "https://github.com/reetwiz/reetwiz-fellowblogs-cd";
+        const workflowFileName = "Push.yml";
+        const artifactsUrl = `${repoUrl}/actions/workflows/${workflowFileName}`;
+        window.open(artifactsUrl, "_blank");
+    };
+
     return (
         <Box sx={{ minHeight: "100vh", bgcolor: "#f5f5f5" }}>
-            {/* Header */}
             <AppBar position="static" color="primary" elevation={2}>
                 <Toolbar>
                     <Typography variant="h5" sx={{ flexGrow: 1, fontWeight: 700 }}>
-                        <Link to={"/blogs"}>
+                        <Link to={"/blogs"} style={{ color: "inherit", textDecoration: "none" }}>
                             FellowBlog
                         </Link>
                     </Typography>
+                    <Button
+                        variant="outlined"
+                        color="inherit"
+                        startIcon={<DownloadIcon />}
+                        sx={{ fontWeight: 600, mr: 2 }}
+                        onClick={handleDownloadArtifacts}
+                    >
+                        Download Artifacts
+                    </Button>
                     <Button
                         component={Link}
                         to="/blogs/create"
@@ -41,8 +57,7 @@ const AllBlogs: React.FC = () => {
                     </Button>
                 </Toolbar>
             </AppBar>
-
-            {/* Body */}
+            {/* The rest of the file is unchanged. */}
             <Container maxWidth="lg" sx={{ mt: 4 }}>
                 {loading && (
                     <Typography variant="h6" align="center" sx={{ mt: 4 }}>
@@ -113,7 +128,6 @@ const AllBlogs: React.FC = () => {
                                         background: "transparent",
                                     }}
                                 >
-                                    {/* Fake "picture" with gibberish blurry text */}
                                     <Box
                                         sx={{
                                             position: "absolute",
@@ -145,10 +159,9 @@ const AllBlogs: React.FC = () => {
                                                 whiteSpace: "pre-line",
                                             }}
                                         >
-                                            {blog.content.substring(50,200)}
+                                            {blog.content.substring(50, 200)}
                                         </Typography>
                                     </Box>
-                                    {/* Card Footer */}
                                     <CardContent
                                         sx={{
                                             mt: "auto",
