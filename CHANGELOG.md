@@ -1,4 +1,15 @@
-## 0.1.0 (2025-07-07)
+## [1.0.0](https://github.com/Reetwiz/FellowBlogs-CD/compare/v0.1.0...v1.0.0) (2025-07-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* First Breaking Change
+
+### Features
+
+* First Breaking Change ([e5f486e](https://github.com/Reetwiz/FellowBlogs-CD/commit/e5f486e38146ec00d8bfc406a8ffcb587100bea1))
+
+## [0.1.0](https://github.com/Reetwiz/FellowBlogs-CD/compare/8fa2830928ae5cfec6b0529c4ed08f4cd6e10a9c...v0.1.0) (2025-07-07)
 
 
 ### ⚠ BREAKING CHANGES
