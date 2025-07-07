@@ -1,10 +1,10 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
-import AllBlogs from "./pages/AllBlogs";
-import SingleBlog from "./pages/SingleBlog";
-import CreateBlog from "./pages/CreateBlog";
-import CompleteSignup from "./pages/CompleteSignup";
 import { ClerkProvider, SignedIn, SignedOut, SignInButton } from "@clerk/clerk-react";
-import { CssBaseline, ThemeProvider, createTheme, Box, Typography, Button } from "@mui/material";
+import { Box, Button, createTheme, CssBaseline, ThemeProvider, Typography } from "@mui/material";
+import { Navigate, Route, BrowserRouter as Router, Routes } from "react-router-dom";
+import AllBlogs from "./pages/AllBlogs";
+import CompleteSignup from "./pages/CompleteSignup";
+import CreateBlog from "./pages/CreateBlog";
+import SingleBlog from "./pages/SingleBlog";
 
 const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const theme = createTheme();
@@ -15,10 +15,11 @@ function App() {
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <Box sx={{ minHeight: "100vh", width: '100%', bgcolor: "#f5f5f5" }}>
-          <Router>
+          <Router basename="/reetwiz-fellowblogs-cd">  {/* Changed here for github pages */}
             <Routes>
               <Route path="/" element={<Navigate to="/blogs" replace />} />
               <Route path="/blogs" element={<AllBlogs />} />
+              {/* <Route path="/scan" element={<Navigate to="/scan/index.html" replace />} /> */}
               <Route
                 path="/blogs/create"
                 element={

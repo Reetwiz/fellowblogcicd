@@ -1,0 +1,320 @@
+name: CI/CD Pipeline - Build, Scan, Deploy, Release
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+    paths:
+      - 'backend1/**'
+      - 'backend2/**'
+      - 'frontend/**'
+      - 'docker-compose.prod.yml'
+    paths-ignore:
+      - '**.md'
+
+permissions:
+  contents: write 
+  packages: write
+  pages: write
+  id-token: write
+
+jobs:
+  changes:
+    name: 1. Detect Service Changes
+    runs-on: ubuntu-latest
+    outputs:
+      backend1: ${{ steps.filter.outputs.backend1 }}
+      backend2: ${{ steps.filter.outputs.backend2 }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      any_changed: ${{ steps.filter.outputs.backend1 == 'true' || steps.filter.outputs.backend2 == 'true' || steps.filter.outputs.frontend == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend1:
+              - 'backend1/**'
+            backend2:
+              - 'backend2/**'
+            frontend:
+              - 'frontend/**'
+
+  prepare:
+    name: 2. Prepare Version (for Main only)
+    needs: changes
+    if: github.ref_name == 'main' && needs.changes.outputs.any_changed == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.changelog.outputs.tag }}
+      version: ${{ steps.changelog.outputs.version }}
+      skipped: ${{ steps.changelog.outputs.skipped }}
+      clean_changelog: ${{ steps.changelog.outputs.clean_changelog }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Conventional Changelog Action
+        id: changelog
+        uses: TriPSs/conventional-changelog-action@v5
+        with:
+          preset: "conventionalcommits"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  build-and-push:
+    name: 3. Build & Push - ${{ matrix.service }}
+    needs: [changes, prepare]
+    if: (github.ref_name == 'dev' && needs.changes.outputs.any_changed == 'true') || (github.ref_name == 'main' && needs.prepare.outputs.skipped == 'false')
+    runs-on: ${{ matrix.runner }}
+    environment:
+      name: ${{ github.ref_name == 'main' && 'production' || 'development' }}
+    strategy:
+      matrix:
+        include:
+          - service: backend1
+            context: ./backend1
+            runner: backend-runner
+          - service: backend2
+            context: ./backend2
+            runner: backend-runner
+          - service: frontend
+            context: ./frontend
+            runner: frontend-runner
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Docker Metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKER_HUB_USERNAME }}/${{ github.event.repository.name }}${{ github.ref_name == 'dev' && '-dev' || '' }}-${{ matrix.service }}
+          tags: |
+            type=raw,value=dev,enable=${{ github.ref_name == 'dev' }}
+            type=sha,prefix=dev-,format=short,enable=${{ github.ref_name == 'dev' }}
+            type=raw,value=latest,enable=${{ github.ref_name == 'main' }}
+            type=semver,pattern={{version}},value=${{ needs.prepare.outputs.version }},enable=${{ github.ref_name == 'main' }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.prepare.outputs.version }},enable=${{ github.ref_name == 'main' }}
+      - name: Build and push Docker image (if changed)
+        id: build
+        if: needs.changes.outputs[matrix.service] == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.context }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            ${{ matrix.service == 'frontend' && format('VITE_CLERK_PUBLISHABLE_KEY={0}', vars.VITE_CLERK_PUBLISHABLE_KEY) || '' }}
+            ${{ matrix.service == 'frontend' && format('VITE_BACKEND1_BASE_URL={0}', vars.VITE_BACKEND1_BASE_URL) || '' }}
+            ${{ matrix.service == 'frontend' && format('VITE_BACKEND2_BASE_URL={0}', vars.VITE_BACKEND2_BASE_URL) || '' }}
+      - name: Re-tag and push existing image (if not changed on main)
+        if: github.ref_name == 'main' && needs.changes.outputs[matrix.service] == 'false'
+        run: |
+          PROD_IMAGE_NAME="${{ secrets.DOCKER_HUB_USERNAME }}/${{ github.event.repository.name }}-${{ matrix.service }}"
+          docker pull $PROD_IMAGE_NAME:latest
+          echo "${{ steps.meta.outputs.tags }}" | tr ',' '\n' | while read tag; do
+            docker tag $PROD_IMAGE_NAME:latest "$tag"
+            docker push "$tag"
+          done
+      - name: Upload Build Artifact (Source Code)
+        if: steps.build.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifact-${{ matrix.service }}
+          path: ${{ matrix.context }}
+
+  deploy-to-vm:
+    name: 8. Deploy to Production VM
+    needs: [prepare, build-and-push]
+    if: github.ref_name == 'main' && needs.prepare.outputs.skipped == 'false'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout production-ready files
+        uses: actions/checkout@v4
+      - name: Deploy to VM via SCP and SSH
+        uses: easingthemes/ssh-deploy@v5
+        with:
+          SSH_PRIVATE_KEY: ${{ secrets.VM_SSH_PRIVATE_KEY }}
+          REMOTE_HOST: ${{ secrets.VM_HOST }}
+          REMOTE_USER: ${{ secrets.VM_USERNAME }}
+          SOURCE: "docker-compose.prod.yml"
+          TARGET: "/home/reetwiz/fellowblogs"
+          SCRIPT_AFTER: |
+            set -e
+            cd /home/reetwiz/fellowblogs
+
+            echo "--- Logging into Docker Hub ---"
+            echo "${{ secrets.DOCKER_HUB_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_HUB_USERNAME }}" --password-stdin
+
+            echo "--- Creating .env file for Docker Compose ---"
+            cat <<EOF > .env
+            # Database Credentials
+            POSTGRES_USER=${{ vars.POSTGRES_USER }}
+            POSTGRES_DB=${{ vars.POSTGRES_DB }}
+            POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+            # Backend Configuration
+            NODE_ENV=${{ vars.NODE_ENV }}
+            DB_HOST=${{ vars.DB_HOST }}
+            DB_PORT=${{ vars.DB_PORT }}
+            DB_USER=${{ vars.DB_USER }}
+            DB_NAME=${{ vars.DB_NAME }}
+            DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+            DB_CLIENT=${{ vars.DB_CLIENT }}
+            CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
+            CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
+            # Docker Image Tags
+            DOCKER_IMAGE_BACKEND1=${{ secrets.DOCKER_HUB_USERNAME }}/${{ github.event.repository.name }}-backend1:latest
+            DOCKER_IMAGE_BACKEND2=${{ secrets.DOCKER_HUB_USERNAME }}/${{ github.event.repository.name }}-backend2:latest
+            DOCKER_IMAGE_FRONTEND=${{ secrets.DOCKER_HUB_USERNAME }}/${{ github.event.repository.name }}-frontend:latest
+            EOF
+
+            echo "--- Pulling latest images ---"
+            docker-compose -f docker-compose.prod.yml --env-file .env pull
+
+            echo "--- Starting services ---"
+            docker-compose -f docker-compose.prod.yml --env-file .env up -d --remove-orphans
+
+            echo "--- Cleaning up old images ---"
+            docker image prune -af
+
+  # --- The following jobs are production-only and will only run when a new version is created. ---
+  # --- They use the specific version tag (e.g., v1.2.3) for artifacts, which is correct. ---
+
+  upload-compose-artifact:
+    name: 4. Upload Compose Artifact for Release
+    needs: prepare
+    if: github.ref_name == 'main' && needs.prepare.outputs.skipped == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docker-compose-file
+          path: docker-compose.prod.yml
+
+  export-images:
+    name: 5. Export Docker Images for Release
+    needs: [prepare, build-and-push]
+    if: github.ref_name == 'main' && needs.prepare.outputs.skipped == 'false'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [backend1, backend2, frontend]
+    steps:
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+      - name: Pull and Export Image
+        run: |
+          IMAGE_NAME="${{ secrets.DOCKER_HUB_USERNAME }}/${{ github.event.repository.name }}-${{ matrix.service }}"
+          IMAGE_TAG="${{ needs.prepare.outputs.tag }}"
+          docker pull $IMAGE_NAME:$IMAGE_TAG
+          docker save -o image-${{ matrix.service }}.tar $IMAGE_NAME:$IMAGE_TAG
+      - name: Upload Image Export as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image-export-${{ matrix.service }}
+          path: image-${{ matrix.service }}.tar
+
+  scan-images:
+    name: 6. Scan Images for Release
+    needs: [prepare, build-and-push]
+    if: github.ref_name == 'main' && needs.prepare.outputs.skipped == 'false'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [backend1, backend2, frontend]
+    steps:
+      - name: Scan image with Trivy and generate HTML report
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ secrets.DOCKER_HUB_USERNAME }}/${{ github.event.repository.name }}-${{ matrix.service }}:${{ needs.prepare.outputs.tag }}
+          format: 'template'
+          template: '@/contrib/html.tpl'
+          output: 'trivy-report.html'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+      - name: Upload Trivy Scan Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-report-${{ matrix.service }}
+          path: trivy-report.html
+
+  deploy-to-pages:
+    name: 7. Deploy Site and Reports to GitHub Pages
+    needs: [changes, prepare, scan-images]
+    if: github.ref_name == 'main' && needs.prepare.outputs.skipped == 'false'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'yarn'
+      - name: Build Frontend with Yarn
+        if: needs.changes.outputs.frontend == 'true'
+        run: |
+          cd frontend
+          yarn install --frozen-lockfile
+          yarn build
+      - name: Download all scan reports
+        uses: actions/download-artifact@v4
+        with:
+          path: reports
+      - name: Consolidate Artifacts for Pages
+        run: |
+          mkdir -p _site/scan
+          if [ -d "frontend/dist" ]; then
+            cp -r frontend/dist/* _site/
+          fi
+          CONTENT_B1=$(awk '/<body/,/<\/body>/' reports/trivy-report-backend1/trivy-report.html | sed '1d;$d')
+          CONTENT_B2=$(awk '/<body/,/<\/body>/' reports/trivy-report-backend2/trivy-report.html | sed '1d;$d')
+          CONTENT_FE=$(awk '/<body/,/<\/body>/' reports/trivy-report-frontend/trivy-report.html | sed '1d;$d')
+          cat <<EOF > _site/scan/index.html
+          <!DOCTYPE html><html><head><title>Consolidated Trivy Scan Report</title><style>body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif; margin: 2em; line-height: 1.5; } h1, h2 { border-bottom: 2px solid #eaecef; padding-bottom: 0.3em; } h1 { font-size: 2em; } h2 { font-size: 1.5em; margin-top: 2em; } hr { height: .25em; padding: 0; margin: 36px 0; background-color: #d0d7de; border: 0; } .trivy-container { margin: 2em; } table { border-collapse: collapse; margin: 1em 0; width: 100%; } th, td { border: 1px solid #ddd; padding: 8px; text-align: left; } th { background-color: #f2f2f2; }</style></head><body><h1>Consolidated Trivy Scan Report for Release ${{ needs.prepare.outputs.tag }}</h1><h2>Backend1 Scan Results</h2>${CONTENT_B1}<hr><h2>Backend2 Scan Results</h2>${CONTENT_B2}<hr><h2>Frontend Scan Results</h2>${CONTENT_FE}</body></html>
+          EOF
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./_site
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  release:
+    name: 9. Create GitHub Release
+    needs: [deploy-to-vm, export-images, upload-compose-artifact]
+    if: github.ref_name == 'main' && needs.prepare.outputs.skipped == 'false'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts for release
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+      - name: Create GitHub Release and Upload Artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: Release ${{ needs.prepare.outputs.tag }}
+          body: ${{ needs.prepare.outputs.clean_changelog }}
+          files: |
+            release-artifacts/docker-compose-file/docker-compose.prod.yml
+            release-artifacts/build-artifact-*/*.zip
+            release-artifacts/trivy-report-*/*.html
+            release-artifacts/docker-image-export-*/*.tar

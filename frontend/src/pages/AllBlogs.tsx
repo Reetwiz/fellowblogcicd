@@ -1,5 +1,8 @@
 import AddIcon from "@mui/icons-material/Add";
+import CodeIcon from '@mui/icons-material/Code';
 import DownloadIcon from '@mui/icons-material/Download';
+import SecurityIcon from '@mui/icons-material/Security';
+import WebAssetIcon from '@mui/icons-material/WebAsset';
 import {
     AppBar,
     Box,
@@ -8,6 +11,11 @@ import {
     CardActionArea,
     CardContent,
     Container,
+    Divider,
+    ListItemIcon,
+    ListItemText,
+    Menu,
+    MenuItem,
     Paper,
     Stack,
     Toolbar,
@@ -20,31 +28,98 @@ import { useAllBlogs } from "../hooks/useBlogData";
 const AllBlogs: React.FC = () => {
     const { blogs, loading, error } = useAllBlogs();
 
-    const handleDownloadArtifacts = () => {
-        const repoUrl = "https://github.com/reetwiz/reetwiz-fellowblogs-cd";
-        const workflowFileName = "Push.yml";
-        const artifactsUrl = `${repoUrl}/actions/workflows/${workflowFileName}`;
-        window.open(artifactsUrl, "_blank");
+    // State and handlers for the download artifacts dropdown menu
+    const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
+    const open = Boolean(anchorEl);
+
+    const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+        setAnchorEl(event.currentTarget);
+    };
+    const handleClose = () => {
+        setAnchorEl(null);
     };
 
     return (
         <Box sx={{ minHeight: "100vh", bgcolor: "#f5f5f5" }}>
+            {/* Header */}
             <AppBar position="static" color="primary" elevation={2}>
                 <Toolbar>
                     <Typography variant="h5" sx={{ flexGrow: 1, fontWeight: 700 }}>
+                        {/* This Link correctly uses relative paths handled by React Router */}
                         <Link to={"/blogs"} style={{ color: "inherit", textDecoration: "none" }}>
                             FellowBlog
                         </Link>
                     </Typography>
+
+                    {/* --- Scan Reports Button --- */}
                     <Button
                         variant="outlined"
                         color="inherit"
-                        startIcon={<DownloadIcon />}
+                        startIcon={<SecurityIcon />}
                         sx={{ fontWeight: 600, mr: 2 }}
-                        onClick={handleDownloadArtifacts}
+                        component="a" // Renders as a standard hyperlink
+                        href="/reetwiz-fellowblogs-cd/scan/" // Links to the physical path on GitHub Pages
+                        target="_blank"
+                        rel="noopener noreferrer"
                     >
-                        Download Artifacts
+                        Scan Reports
                     </Button>
+
+                    {/* --- Download Artifacts Dropdown Menu --- */}
+                    <Box sx={{ mr: 2 }}>
+                        <Button
+                            id="download-artifacts-button"
+                            aria-controls={open ? 'download-artifacts-menu' : undefined}
+                            aria-haspopup="true"
+                            aria-expanded={open ? 'true' : undefined}
+                            onClick={handleClick}
+                            variant="outlined"
+                            color="inherit"
+                            startIcon={<DownloadIcon />}
+                            sx={{ fontWeight: 600 }}
+                        >
+                            Downloads
+                        </Button>
+                        <Menu
+                            id="download-artifacts-menu"
+                            anchorEl={anchorEl}
+                            open={open}
+                            onClose={handleClose}
+                        >
+                            <MenuItem disabled><Typography variant="caption">Backend 1</Typography></MenuItem>
+                            <MenuItem component="a" href="https://github.com/reetwiz/reetwiz-fellowblogs-cd/releases/download/latest/build-artifact-backend1.zip" onClick={handleClose}>
+                                <ListItemIcon><CodeIcon fontSize="small" /></ListItemIcon>
+                                <ListItemText>Source (.zip)</ListItemText>
+                            </MenuItem>
+                            <MenuItem component="a" href="https://github.com/reetwiz/reetwiz-fellowblogs-cd/releases/download/latest/image-backend1.tar" onClick={handleClose}>
+                                <ListItemIcon><WebAssetIcon fontSize="small" /></ListItemIcon>
+                                <ListItemText>Image (.tar)</ListItemText>
+                            </MenuItem>
+                            <Divider />
+
+                            <MenuItem disabled><Typography variant="caption">Backend 2</Typography></MenuItem>
+                            <MenuItem component="a" href="https://github.com/reetwiz/reetwiz-fellowblogs-cd/releases/download/latest/build-artifact-backend2.zip" onClick={handleClose}>
+                                <ListItemIcon><CodeIcon fontSize="small" /></ListItemIcon>
+                                <ListItemText>Source (.zip)</ListItemText>
+                            </MenuItem>
+                            <MenuItem component="a" href="https://github.com/reetwiz/reetwiz-fellowblogs-cd/releases/download/latest/image-backend2.tar" onClick={handleClose}>
+                                <ListItemIcon><WebAssetIcon fontSize="small" /></ListItemIcon>
+                                <ListItemText>Image (.tar)</ListItemText>
+                            </MenuItem>
+                            <Divider />
+
+                            <MenuItem disabled><Typography variant="caption">Frontend</Typography></MenuItem>
+                            <MenuItem component="a" href="https://github.com/reetwiz/reetwiz-fellowblogs-cd/releases/download/latest/build-artifact-frontend.zip" onClick={handleClose}>
+                                <ListItemIcon><CodeIcon fontSize="small" /></ListItemIcon>
+                                <ListItemText>Source (.zip)</ListItemText>
+                            </MenuItem>
+                            <MenuItem component="a" href="https://github.com/reetwiz/reetwiz-fellowblogs-cd/releases/download/latest/image-frontend.tar" onClick={handleClose}>
+                                <ListItemIcon><WebAssetIcon fontSize="small" /></ListItemIcon>
+                                <ListItemText>Image (.tar)</ListItemText>
+                            </MenuItem>
+                        </Menu>
+                    </Box>
+
                     <Button
                         component={Link}
                         to="/blogs/create"
@@ -57,7 +132,7 @@ const AllBlogs: React.FC = () => {
                     </Button>
                 </Toolbar>
             </AppBar>
-            {/* The rest of the file is unchanged. */}
+
             <Container maxWidth="lg" sx={{ mt: 4 }}>
                 {loading && (
                     <Typography variant="h6" align="center" sx={{ mt: 4 }}>

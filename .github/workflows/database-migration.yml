@@ -4,49 +4,55 @@ on:
   workflow_dispatch:
     inputs:
       service:
-        description: 'Which backend service to migrate?'
+        description: 'Which backend service to target?'
         required: true
         type: choice
         options:
           - backend1
           - backend2
       action:
-        description: 'Action to perform'
+        description: 'What action to perform?'
         required: true
         type: choice
         options:
           - migrate
           - rollback
-      environment:
-        description: 'Target environment'
-        required: true
-        type: choice
-        options:
-          - development
-          - production
 
 jobs:
-  run-migration:
-    name: Run ${{ inputs.action }} on ${{ inputs.service }}
-    runs-on: backend-runner
-    environment: ${{ inputs.environment }}
+  run-db-migration:
+    name: Run DB Migration for ${{ github.event.inputs.service }}
+    runs-on: ubuntu-latest
+    environment: production
+
     steps:
-      - uses: actions/checkout@v4
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - name: Execute Migration/Rollback on VM
+        uses: appleboy/ssh-action@master
         with:
-          node-version: '18'
-          cache: 'yarn'
-          cache-dependency-path: '${{ inputs.service }}/yarn.lock'
-      - name: Install dependencies
-        run: yarn --cwd ${{ inputs.service }} install
-      - name: Run Knex command
-        working-directory: ${{ inputs.service }}
-        env:
-          DB_HOST: ${{ secrets.DB_HOST }}
-          DB_USER: ${{ secrets.DB_USER }}
-          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-          DB_NAME: ${{ secrets.DB_NAME }}
-          DB_CLIENT: pg
-          NODE_ENV: local
-        run: yarn ${{ inputs.action }}
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USERNAME }}
+          key: ${{ secrets.VM_SSH_PRIVATE_KEY }}
+          script: |
+            set -e
+            
+            if [ "${{ github.event.inputs.service }}" = "backend1" ]; then
+              CONTAINER_NAME="fellowship-backend1"
+            elif [ "${{ github.event.inputs.service }}" = "backend2" ]; then
+              CONTAINER_NAME="fellowship-backend2"
+            else
+              echo "Invalid service name provided."
+              exit 1
+            fi
+            
+            echo "Targeting container: $CONTAINER_NAME"
+            echo "Executing action: ${{ github.event.inputs.action }}"
+            
+            if [ "${{ github.event.inputs.action }}" = "migrate" ]; then
+              docker exec $CONTAINER_NAME yarn knex migrate:latest
+            elif [ "${{ github.event.inputs.action }}" = "rollback" ]; then
+              docker exec $CONTAINER_NAME yarn knex migrate:rollback
+            else
+              echo "Invalid action provided."
+              exit 1
+            fi
+            
+            echo "Command executed successfully."

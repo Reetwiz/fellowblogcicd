@@ -1,7 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 import * as userService from "../services/userService";
 
-// Get user by Clerk user ID (from params)
+// Get user by Clerk user ID (from params).
 export const getUserById = (
   req: Request,
   res: Response,
