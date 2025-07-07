@@ -1,3 +1,10 @@
+## [2.0.1](https://github.com/Reetwiz/FellowBlogs-CD/compare/v2.0.0...v2.0.1) (2025-07-07)
+
+
+### Bug Fixes
+
+*  test ([38a668c](https://github.com/Reetwiz/FellowBlogs-CD/commit/38a668cf56c4d462e99fcc577d83e079c335b900))
+
 ## [2.0.0](https://github.com/Reetwiz/FellowBlogs-CD/compare/v1.0.0...v2.0.0) (2025-07-07)
 
 
