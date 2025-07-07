@@ -36,7 +36,7 @@ const SingleBlog: React.FC = () => {
     const { getToken, isSignedIn } = useAuth();
     const navigate = useNavigate();
 
-    // Check if user exists in backend (user table)
+    // Check if user exists in backend (user table).
     const { user: backendUser, loading: userLoading } = useUserById(clerkUser?.id);
 
     const [commentText, setCommentText] = useState("");
