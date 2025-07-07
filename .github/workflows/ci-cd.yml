@@ -67,7 +67,7 @@ jobs:
     name: 3. Build & Push - ${{ matrix.service }}
     needs: [changes, prepare]
     if: (github.ref_name == 'dev' && needs.changes.outputs.any_changed == 'true') || (github.ref_name == 'main' && needs.prepare.outputs.skipped == 'false')
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }} 
     environment:
       name: ${{ github.ref_name == 'main' && 'production' || 'development' }}
     strategy:
@@ -78,12 +78,15 @@ jobs:
             runner: backend-runner
           - service: backend2
             context: ./backend2
-            runner: backend-runner
+            runner: frontend-runner # Using frontend-runner for parallelism
           - service: frontend
             context: ./frontend
             runner: frontend-runner
     steps:
       - uses: actions/checkout@v4
+      # NEW STEP: Convert repo name to lowercase and save it as an environment variable
+      - name: Set repo name to lowercase
+        run: echo "REPO_NAME=$(echo ${{ github.event.repository.name }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
       - uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
@@ -94,8 +97,8 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          # Note: The repo name here should be 'fellowblogs-cd' to match your Docker Hub screenshot
-          images: ${{ secrets.DOCKER_HUB_USERNAME }}/${{ github.event.repository.name }}${{ github.ref_name == 'dev' && '-dev' || '' }}-${{ matrix.service }}
+          # FIX: Use the new lowercase env.REPO_NAME variable
+          images: ${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.REPO_NAME }}${{ github.ref_name == 'dev' && '-dev' || '' }}-${{ matrix.service }}
           tags: |
             type=raw,value=dev,enable=${{ github.ref_name == 'dev' }}
             type=sha,prefix=dev-,format=short,enable=${{ github.ref_name == 'dev' }}
@@ -111,8 +114,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
           build-args: |
             ${{ matrix.service == 'frontend' && format('VITE_CLERK_PUBLISHABLE_KEY={0}', vars.VITE_CLERK_PUBLISHABLE_KEY) || '' }}
             ${{ matrix.service == 'frontend' && format('VITE_BACKEND1_BASE_URL={0}', vars.VITE_BACKEND1_BASE_URL) || '' }}
@@ -120,7 +123,7 @@ jobs:
       - name: Re-tag and push existing image (if not changed on main)
         if: github.ref_name == 'main' && needs.changes.outputs[matrix.service] == 'false'
         run: |
-          PROD_IMAGE_NAME="${{ secrets.DOCKER_HUB_USERNAME }}/${{ github.event.repository.name }}-${{ matrix.service }}"
+          PROD_IMAGE_NAME="${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.REPO_NAME }}-${{ matrix.service }}"
           docker pull $PROD_IMAGE_NAME:latest
           echo "${{ steps.meta.outputs.tags }}" | tr ',' '\n' | while read tag; do
             docker tag $PROD_IMAGE_NAME:latest "$tag"
@@ -150,12 +153,14 @@ jobs:
     needs: [prepare, build-and-push]
     if: github.ref_name == 'main' && needs.prepare.outputs.skipped == 'false'
     runs-on: ubuntu-latest
-    # FIX: Added environment to grant this job access to secrets.
     environment: production 
     strategy:
       matrix:
         service: [backend1, backend2, frontend]
     steps:
+      # NEW STEP: Convert repo name to lowercase
+      - name: Set repo name to lowercase
+        run: echo "REPO_NAME=$(echo ${{ github.event.repository.name }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
@@ -163,7 +168,8 @@ jobs:
           password: ${{ secrets.DOCKER_HUB_PASSWORD }}
       - name: Pull and Export Image
         run: |
-          IMAGE_NAME="${{ secrets.DOCKER_HUB_USERNAME }}/${{ github.event.repository.name }}-${{ matrix.service }}"
+          # FIX: Use the new lowercase env.REPO_NAME variable
+          IMAGE_NAME="${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.REPO_NAME }}-${{ matrix.service }}"
           IMAGE_TAG="${{ needs.prepare.outputs.tag }}"
           docker pull $IMAGE_NAME:$IMAGE_TAG
           docker save -o image-${{ matrix.service }}.tar $IMAGE_NAME:$IMAGE_TAG
@@ -178,17 +184,19 @@ jobs:
     needs: [prepare, build-and-push]
     if: github.ref_name == 'main' && needs.prepare.outputs.skipped == 'false'
     runs-on: ubuntu-latest
-    # FIX: Added environment to grant this job access to secrets.
     environment: production
     strategy:
       matrix:
         service: [backend1, backend2, frontend]
     steps:
+      # NEW STEP: Convert repo name to lowercase
+      - name: Set repo name to lowercase
+        run: echo "REPO_NAME=$(echo ${{ github.event.repository.name }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
       - name: Scan image with Trivy and generate HTML report
-        # BEST PRACTICE: Pinned to a specific version instead of master
         uses: aquasecurity/trivy-action@0.20.0
         with:
-          image-ref: ${{ secrets.DOCKER_HUB_USERNAME }}/${{ github.event.repository.name }}-${{ matrix.service }}:${{ needs.prepare.outputs.tag }}
+          # FIX: Use the new lowercase env.REPO_NAME variable
+          image-ref: ${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.REPO_NAME }}-${{ matrix.service }}:${{ needs.prepare.outputs.tag }}
           format: 'template'
           template: '@/contrib/html.tpl'
           output: 'trivy-report.html'
@@ -253,8 +261,10 @@ jobs:
     steps:
       - name: Checkout production-ready files
         uses: actions/checkout@v4
+      # NEW STEP: Convert repo name to lowercase
+      - name: Set repo name to lowercase
+        run: echo "REPO_NAME=$(echo ${{ github.event.repository.name }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
       - name: Deploy to VM via SCP and SSH
-        # FIX: Changed v5 to main, as v5 does not exist.
         uses: easingthemes/ssh-deploy@main
         with:
           SSH_PRIVATE_KEY: ${{ secrets.VM_SSH_PRIVATE_KEY }}
@@ -286,9 +296,10 @@ jobs:
             CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
             CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
             # Docker Image Tags
-            DOCKER_IMAGE_BACKEND1=${{ secrets.DOCKER_HUB_USERNAME }}/${{ github.event.repository.name }}-backend1:latest
-            DOCKER_IMAGE_BACKEND2=${{ secrets.DOCKER_HUB_USERNAME }}/${{ github.event.repository.name }}-backend2:latest
-            DOCKER_IMAGE_FRONTEND=${{ secrets.DOCKER_HUB_USERNAME }}/${{ github.event.repository.name }}-frontend:latest
+            # FIX: Use the new lowercase env.REPO_NAME variable
+            DOCKER_IMAGE_BACKEND1=${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.REPO_NAME }}-backend1:latest
+            DOCKER_IMAGE_BACKEND2=${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.REPO_NAME }}-backend2:latest
+            DOCKER_IMAGE_FRONTEND=${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.REPO_NAME }}-frontend:latest
             EOF
 
             echo "--- Pulling latest images ---"
