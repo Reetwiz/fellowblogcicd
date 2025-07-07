@@ -1,3 +1,12 @@
+## [2.0.0](https://github.com/Reetwiz/FellowBlogs-CD/compare/v1.0.0...v2.0.0) (2025-07-07)
+
+
+### ⚠ BREAKING CHANGES
+
+*  test
+
+*  test ([77bfa3c](https://github.com/Reetwiz/FellowBlogs-CD/commit/77bfa3ca16ce346a9fa1f9439d7715348f9262f7))
+
 ## [1.0.0](https://github.com/Reetwiz/FellowBlogs-CD/compare/v0.1.0...v1.0.0) (2025-07-07)
 
 
