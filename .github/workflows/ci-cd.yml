@@ -1,3 +1,5 @@
+# FILE: .github/workflows/your-workflow-name.yml
+
 name: CI/CD Pipeline
 
 on:
@@ -40,7 +42,6 @@ jobs:
               - 'backend2/**'
             frontend:
               - 'frontend/**'
-
   prepare:
     name: 2. Prepare Version (for Main only)
     needs: changes
@@ -93,7 +94,6 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          # --- NAME CHANGE APPLIED HERE ---
           images: ${{ secrets.DOCKER_HUB_USERNAME }}/fellowblogs-cd-${{ matrix.service }}
           tags: |
             type=raw,value=dev,enable=${{ github.ref_name == 'dev' }}
@@ -119,7 +119,6 @@ jobs:
       - name: Re-tag and push existing image (if not changed on main)
         if: github.ref_name == 'main' && needs.changes.outputs[matrix.service] == 'false'
         run: |
-          # --- NAME CHANGE APPLIED HERE ---
           PROD_IMAGE_NAME="${{ secrets.DOCKER_HUB_USERNAME }}/fellowblogs-cd-${{ matrix.service }}"
           docker pull $PROD_IMAGE_NAME:latest
           echo "${{ steps.meta.outputs.tags }}" | tr ',' '\n' | while read tag; do
@@ -161,7 +160,6 @@ jobs:
           password: ${{ secrets.DOCKER_HUB_PASSWORD }}
       - name: Pull and Export Image
         run: |
-          # --- NAME CHANGE APPLIED HERE ---
           IMAGE_NAME="${{ secrets.DOCKER_HUB_USERNAME }}/fellowblogs-cd-${{ matrix.service }}"
           IMAGE_TAG="${{ needs.prepare.outputs.tag }}"
           docker pull $IMAGE_NAME:$IMAGE_TAG
@@ -181,11 +179,9 @@ jobs:
       matrix:
         service: [backend1, backend2, frontend]
     steps:
-      # This step might fail if you haven't logged in.
       - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@0.20.0
         with:
-          # --- NAME CHANGE APPLIED HERE ---
           image-ref: ${{ secrets.DOCKER_HUB_USERNAME }}/fellowblogs-cd-${{ matrix.service }}:${{ needs.prepare.outputs.tag }}
           format: 'template'
           template: '@/contrib/html.tpl'
@@ -214,12 +210,12 @@ jobs:
           node-version: '20'
           cache: 'yarn'
           cache-dependency-path: frontend/yarn.lock
-      - name: Build Frontend with Yarn
+      - name: Build Frontend for GitHub Pages
         if: needs.changes.outputs.frontend == 'true'
         run: |
           cd frontend
           yarn install --frozen-lockfile
-          yarn build
+          VITE_BASE_URL=/fellowblogcicd/ yarn build
       - name: Download all scan reports
         uses: actions/download-artifact@v4
         with:
@@ -233,8 +229,64 @@ jobs:
           CONTENT_B1=$(awk '/<body/,/<\/body>/' reports/trivy-report-backend1/trivy-report.html | sed '1d;$d')
           CONTENT_B2=$(awk '/<body/,/<\/body>/' reports/trivy-report-backend2/trivy-report.html | sed '1d;$d')
           CONTENT_FE=$(awk '/<body/,/<\/body>/' reports/trivy-report-frontend/trivy-report.html | sed '1d;$d')
+          
           cat <<EOF > _site/scan/index.html
-          <!DOCTYPE html><html><head><title>Consolidated Trivy Scan Report</title><style>body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif; margin: 2em; line-height: 1.5; } h1, h2 { border-bottom: 2px solid #eaecef; padding-bottom: 0.3em; } h1 { font-size: 2em; } h2 { font-size: 1.5em; margin-top: 2em; } hr { height: .25em; padding: 0; margin: 36px 0; background-color: #d0d7de; border: 0; } .trivy-container { margin: 2em; } table { border-collapse: collapse; margin: 1em 0; width: 100%; } th, td { border: 1px solid #ddd; padding: 8px; text-align: left; } th { background-color: #f2f2f2; }</style></head><body><h1>Consolidated Trivy Scan Report for Release ${{ needs.prepare.outputs.tag }}</h1><h2>Backend1 Scan Results</h2>${CONTENT_B1}<hr><h2>Backend2 Scan Results</h2>${CONTENT_B2}<hr><h2>Frontend Scan Results</h2>${CONTENT_FE}</body></html>
+          <!DOCTYPE html>
+          <html>
+          <head>
+          <title>Consolidated Trivy Scan Report</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif; margin: 2em; line-height: 1.5; background-color: #f6f8fa; }
+            h1 { border-bottom: 2px solid #eaecef; padding-bottom: 0.3em; }
+            h2 { margin-top: 1.5em; }
+            .tab { overflow: hidden; border: 1px solid #ccc; background-color: #f1f1f1; border-radius: 5px 5px 0 0; }
+            .tab button { background-color: inherit; float: left; border: none; outline: none; cursor: pointer; padding: 14px 16px; transition: 0.3s; font-size: 17px; }
+            .tab button:hover { background-color: #ddd; }
+            .tab button.active { background-color: #ccc; }
+            .tabcontent { display: none; padding: 12px 24px; border: 1px solid #ccc; border-top: none; background-color: white; animation: fadeEffect 0.5s; }
+            table { border-collapse: collapse; margin: 1em 0; width: 100%; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th { background-color: #f2f2f2; }
+            @keyframes fadeEffect { from {opacity: 0;} to {opacity: 1;} }
+          </style>
+          </head>
+          <body>
+          <h1>Consolidated Trivy Scan Report for Release ${{ needs.prepare.outputs.tag }}</h1>
+          <div class="tab">
+            <button class="tablinks" onclick="openReport(event, 'Backend1')" id="defaultOpen">Backend1</button>
+            <button class="tablinks" onclick="openReport(event, 'Backend2')">Backend2</button>
+            <button class="tablinks" onclick="openReport(event, 'Frontend')">Frontend</button>
+          </div>
+          <div id="Backend1" class="tabcontent">
+            <h2>Backend1 Scan Results</h2>
+            \${CONTENT_B1}
+          </div>
+          <div id="Backend2" class="tabcontent">
+            <h2>Backend2 Scan Results</h2>
+            \${CONTENT_B2}
+          </div>
+          <div id="Frontend" class="tabcontent">
+            <h2>Frontend Scan Results</h2>
+            \${CONTENT_FE}
+          </div>
+          <script>
+          function openReport(evt, reportName) {
+            var i, tabcontent, tablinks;
+            tabcontent = document.getElementsByClassName("tabcontent");
+            for (i = 0; i < tabcontent.length; i++) {
+              tabcontent[i].style.display = "none";
+            }
+            tablinks = document.getElementsByClassName("tablinks");
+            for (i = 0; i < tablinks.length; i++) {
+              tablinks[i].className = tablinks[i].className.replace(" active", "");
+            }
+            document.getElementById(reportName).style.display = "block";
+            evt.currentTarget.className += " active";
+          }
+          document.getElementById("defaultOpen").click();
+          </script>
+          </body>
+          </html>
           EOF
       - uses: actions/upload-pages-artifact@v3
         with:
@@ -243,12 +295,9 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
-  # deploy-to-vm:
-  #   ... (this job is unchanged and commented out) ...
-
   release:
     name: 9. Create GitHub Release
-    needs: [export-images, upload-compose-artifact, scan-images, build-and-push]
+    needs: [prepare, export-images, upload-compose-artifact, scan-images, build-and-push]
     if: github.ref_name == 'main' && needs.prepare.outputs.skipped == 'false'
     runs-on: ubuntu-latest
     permissions:
