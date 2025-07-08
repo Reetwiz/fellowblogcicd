@@ -8,7 +8,7 @@ on:
 jobs:
   deploy-to-vm:
     name: Deploy to Production VM
-    runs-on: ubuntu-latest
+    runs-on: backend-runner
 
     steps:
       - name: SSH into VM and Deploy
