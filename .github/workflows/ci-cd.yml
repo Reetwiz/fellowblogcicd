@@ -1,4 +1,5 @@
-name: CI/CD Pipeline
+name: CI/CD Pipeline - Build, Scan, Deploy, Release
+
 on:
   push:
     branches:
@@ -67,6 +68,8 @@ jobs:
     needs: [changes, prepare]
     if: (github.ref_name == 'dev' && needs.changes.outputs.any_changed == 'true') || (github.ref_name == 'main' && needs.prepare.outputs.skipped == 'false')
     runs-on: ${{ matrix.runner }}
+    environment:
+      name: ${{ github.ref_name == 'main' && 'production' || 'development' }}
     strategy:
       matrix:
         include:
@@ -81,10 +84,12 @@ jobs:
             runner: frontend-runner
     steps:
       - uses: actions/checkout@v4
-      - name: Set repo name to lowercase (Best Practice for Docker)
+      - name: Set repo name to lowercase
         run: echo "REPO_NAME=$(echo ${{ github.event.repository.name }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
-      - name: Log in to Docker Hub
-        run: echo "${{ secrets.DOCKER_HUB_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_HUB_USERNAME }}" --password-stdin
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
       - uses: docker/setup-buildx-action@v3
       - name: Docker Metadata
         id: meta
@@ -109,7 +114,7 @@ jobs:
           cache-from: type=local,src=/tmp/.buildx-cache-${{ matrix.service }}
           cache-to: type=local,mode=max,dest=/tmp/.buildx-cache-${{ matrix.service }}
           build-args: |
-            ${{ matrix.service == 'frontend' && format('VITE_CLERK_PUBLISHABLE_KEY={0}', secrets.VITE_CLERK_PUBLISHABLE_KEY) || '' }}
+            ${{ matrix.service == 'frontend' && format('VITE_CLERK_PUBLISHABLE_KEY={0}', vars.VITE_CLERK_PUBLISHABLE_KEY) || '' }}
             ${{ matrix.service == 'frontend' && format('VITE_BACKEND1_BASE_URL={0}', vars.VITE_BACKEND1_BASE_URL) || '' }}
             ${{ matrix.service == 'frontend' && format('VITE_BACKEND2_BASE_URL={0}', vars.VITE_BACKEND2_BASE_URL) || '' }}
       - name: Re-tag and push existing image (if not changed on main)
@@ -145,14 +150,18 @@ jobs:
     needs: [prepare, build-and-push]
     if: github.ref_name == 'main' && needs.prepare.outputs.skipped == 'false'
     runs-on: ubuntu-latest
+    environment: production
     strategy:
       matrix:
         service: [backend1, backend2, frontend]
     steps:
-      - name: Set repo name to lowercase (Best Practice for Docker)
+      - name: Set repo name to lowercase
         run: echo "REPO_NAME=$(echo ${{ github.event.repository.name }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
       - name: Log in to Docker Hub
-        run: echo "${{ secrets.DOCKER_HUB_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_HUB_USERNAME }}" --password-stdin
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
       - name: Pull and Export Image
         run: |
           IMAGE_NAME="${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.REPO_NAME }}-${{ matrix.service }}"
@@ -170,11 +179,12 @@ jobs:
     needs: [prepare, build-and-push]
     if: github.ref_name == 'main' && needs.prepare.outputs.skipped == 'false'
     runs-on: ubuntu-latest
+    environment: production
     strategy:
       matrix:
         service: [backend1, backend2, frontend]
     steps:
-      - name: Set repo name to lowercase (Best Practice for Docker)
+      - name: Set repo name to lowercase
         run: echo "REPO_NAME=$(echo ${{ github.event.repository.name }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
       - name: Scan image with Trivy and generate HTML report
         uses: aquasecurity/trivy-action@0.20.0
@@ -204,17 +214,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
           cache: 'yarn'
           cache-dependency-path: frontend/yarn.lock
-      - name: Set Repository Name
-        run: echo "REPO_NAME=$(echo ${{ github.repository }} | cut -d'/' -f2)" >> $GITHUB_ENV
-      - name: Build Frontend for GitHub Pages
+      - name: Build Frontend with Yarn
         if: needs.changes.outputs.frontend == 'true'
         run: |
           cd frontend
           yarn install --frozen-lockfile
-          VITE_BASE_URL=/${{ env.REPO_NAME }}/ yarn build
+          yarn build
       - name: Download all scan reports
         uses: actions/download-artifact@v4
         with:
@@ -242,21 +250,33 @@ jobs:
     name: 8. Deploy to Production VM
     needs: [prepare, build-and-push]
     if: github.ref_name == 'main' && needs.prepare.outputs.skipped == 'false'
-    runs-on: backend-runner
+    runs-on: ubuntu-latest
+    environment: production
     steps:
-      - name: Trigger Remote Deployment
+      - name: Checkout production-ready files
+        uses: actions/checkout@v4
+      - name: Deploy to VM and restart services
         uses: easingthemes/ssh-deploy@main
         with:
           SSH_PRIVATE_KEY: ${{ secrets.VM_SSH_PRIVATE_KEY }}
           REMOTE_HOST: ${{ secrets.VM_HOST }}
           REMOTE_USER: ${{ secrets.VM_USERNAME }}
+          SOURCE: "docker-compose.prod.yml"
           TARGET: "/home/reetwiz/fellowblogs"
           SCRIPT_AFTER: |
             set -e
             cd /home/reetwiz/fellowblogs
+
+            echo "--- Logging into Docker Hub to pull images ---"
             echo "${{ secrets.DOCKER_HUB_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_HUB_USERNAME }}" --password-stdin
-            docker-compose pull
-            docker-compose up -d --remove-orphans
+
+            echo "--- Pulling latest images defined in docker-compose.prod.yml ---"
+            docker compose pull
+
+            echo "--- Restarting services with the new images ---"
+            docker compose up -d --remove-orphans
+
+            echo "--- Cleaning up unused Docker images ---"
             docker image prune -af
 
   release:
