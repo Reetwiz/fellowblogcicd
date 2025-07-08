@@ -1,7 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 import * as userService from "../services/userService";
 
-// CD test backend1.
+// CD test backend1..
 export const getUserById = (
   req: Request,
   res: Response,

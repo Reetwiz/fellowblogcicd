@@ -11,8 +11,7 @@ import SingleBlog from "./pages/SingleBlog";
 const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const theme = createTheme();
 
-// This special Vite variable automatically gets the 'base' value used during the build.
-// It will be '/' for your Docker build and '/reetwiz-fellowblogs-cd/' for the Pages build.
+// Frontend app.tsx.
 const basename = import.meta.env.BASE_URL;
 
 function App() {
