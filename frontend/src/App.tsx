@@ -1,3 +1,5 @@
+// frontend/src/App.tsx
+
 import { ClerkProvider, SignedIn, SignedOut, SignInButton } from "@clerk/clerk-react";
 import { Box, Button, createTheme, CssBaseline, ThemeProvider, Typography } from "@mui/material";
 import { Navigate, Route, BrowserRouter as Router, Routes } from "react-router-dom";
@@ -9,17 +11,23 @@ import SingleBlog from "./pages/SingleBlog";
 const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const theme = createTheme();
 
+// This special Vite variable automatically gets the 'base' value used during the build.
+// It will be '/' for your Docker build and '/reetwiz-fellowblogs-cd/' for the Pages build.
+const basename = import.meta.env.BASE_URL;
+
 function App() {
   return (
     <ClerkProvider publishableKey={clerkPublishableKey}>
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <Box sx={{ minHeight: "100vh", width: '100%', bgcolor: "#f5f5f5" }}>
-          <Router basename="/reetwiz-fellowblogs-cd">
+          {/* This is the critical change: use the dynamic basename here. */}
+          <Router basename={basename}>
             <Routes>
+              {/* All your routes will now work correctly in both environments */}
               <Route path="/" element={<Navigate to="/blogs" replace />} />
               <Route path="/blogs" element={<AllBlogs />} />
-              {/* <Route path="/scan" element={<Navigate to="/scan/index.html" replace />} /> */}
+              <Route path="/scan" element={<Navigate to="/scan/index.html" replace />} />
               <Route
                 path="/blogs/create"
                 element={
@@ -48,7 +56,6 @@ function App() {
                             <SignInButton
                               mode="modal"
                               fallbackRedirectUrl="/blogs/create"
-                              //signInOptions={{ strategy: "oauth_google" }}
                             >
                               <Button
                                 variant="contained"

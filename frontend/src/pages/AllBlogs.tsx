@@ -25,10 +25,13 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { useAllBlogs } from "../hooks/useBlogData";
 
+// THE FIX IS HERE: Use simple and safe string concatenation instead of the URL constructor.
+// This works in all environments (dev server, Docker, and GitHub Pages).
+const scanReportPath = `${import.meta.env.BASE_URL}scan/`;
+
 const AllBlogs: React.FC = () => {
     const { blogs, loading, error } = useAllBlogs();
 
-    // State and handlers for the download artifacts dropdown menu
     const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
     const open = Boolean(anchorEl);
 
@@ -41,31 +44,27 @@ const AllBlogs: React.FC = () => {
 
     return (
         <Box sx={{ minHeight: "100vh", bgcolor: "#f5f5f5" }}>
-            {/* Header */}
             <AppBar position="static" color="primary" elevation={2}>
                 <Toolbar>
                     <Typography variant="h5" sx={{ flexGrow: 1, fontWeight: 700 }}>
-                        {/* This Link correctly uses relative paths handled by React Router */}
                         <Link to={"/blogs"} style={{ color: "inherit", textDecoration: "none" }}>
                             FellowBlog
                         </Link>
                     </Typography>
 
-                    {/* --- Scan Reports Button --- */}
                     <Button
                         variant="outlined"
                         color="inherit"
                         startIcon={<SecurityIcon />}
                         sx={{ fontWeight: 600, mr: 2 }}
-                        component="a" // Renders as a standard hyperlink
-                        href="/reetwiz-fellowblogs-cd/scan/" // Links to the physical path on GitHub Pages
+                        component="a"
+                        href={scanReportPath} // Use the corrected, dynamic path
                         target="_blank"
                         rel="noopener noreferrer"
                     >
                         Scan Reports
                     </Button>
 
-                    {/* --- Download Artifacts Dropdown Menu --- */}
                     <Box sx={{ mr: 2 }}>
                         <Button
                             id="download-artifacts-button"

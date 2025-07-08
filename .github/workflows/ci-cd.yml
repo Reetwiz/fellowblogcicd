@@ -1,4 +1,4 @@
-name: CI/CD Pipeline - Build, Scan, Deploy, Release
+name: CI/CD Pipeline
 
 on:
   push:
@@ -9,7 +9,6 @@ on:
       - 'backend1/**'
       - 'backend2/**'
       - 'frontend/**'
-      # - '.github/workflows/ci-cd.yml'
       - 'docker-compose.prod.yml'
       - '!**.md'
       - '!**/README.md' 
@@ -29,6 +28,7 @@ jobs:
       backend2: ${{ steps.filter.outputs.backend2 }}
       frontend: ${{ steps.filter.outputs.frontend }}
       any_changed: ${{ steps.filter.outputs.backend1 == 'true' || steps.filter.outputs.backend2 == 'true' || steps.filter.outputs.frontend == 'true' }}
+      repo_name_lc: ${{ steps.repo_name.outputs.lower }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -41,6 +41,9 @@ jobs:
               - 'backend2/**'
             frontend:
               - 'frontend/**'
+      - name: Set repo name to lowercase
+        id: repo_name
+        run: echo "lower=$(echo ${{ github.event.repository.name }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
   prepare:
     name: 2. Prepare Version (for Main only)
@@ -68,8 +71,6 @@ jobs:
     needs: [changes, prepare]
     if: (github.ref_name == 'dev' && needs.changes.outputs.any_changed == 'true') || (github.ref_name == 'main' && needs.prepare.outputs.skipped == 'false')
     runs-on: ${{ matrix.runner }} 
-    environment:
-      name: ${{ github.ref_name == 'main' && 'production' || 'development' }}
     strategy:
       matrix:
         include:
@@ -78,30 +79,24 @@ jobs:
             runner: backend-runner
           - service: backend2
             context: ./backend2
-            runner: frontend-runner # Using frontend-runner for parallelism
+            runner: backend-runner
           - service: frontend
             context: ./frontend
             runner: frontend-runner
     steps:
       - uses: actions/checkout@v4
-      - name: Set repo name to lowercase
-        run: echo "REPO_NAME=$(echo ${{ github.event.repository.name }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
-      - uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
-      - uses: docker/setup-qemu-action@v3
+      - name: Log in to Docker Hub
+        run: echo "${{ secrets.DOCKER_HUB_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_HUB_USERNAME }}" --password-stdin
       - uses: docker/setup-buildx-action@v3
       - name: Docker Metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.REPO_NAME }}${{ github.ref_name == 'dev' && '-dev' || '' }}-${{ matrix.service }}
+          images: ${{ secrets.DOCKER_HUB_USERNAME }}/${{ needs.changes.outputs.repo_name_lc }}-${{ matrix.service }}
           tags: |
             type=raw,value=dev,enable=${{ github.ref_name == 'dev' }}
             type=sha,prefix=dev-,format=short,enable=${{ github.ref_name == 'dev' }}
             type=raw,value=latest,enable=${{ github.ref_name == 'main' }}
-            # FIX: Prepend 'v' to match the Git tag from conventional-changelog-action
             type=semver,pattern=v{{version}},value=${{ needs.prepare.outputs.version }},enable=${{ github.ref_name == 'main' }}
             type=semver,pattern=v{{major}}.{{minor}},value=${{ needs.prepare.outputs.version }},enable=${{ github.ref_name == 'main' }}
       - name: Build and push Docker image (if changed)
@@ -113,18 +108,16 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # cache-from: type=gha,scope=${{ matrix.service }}
-          # cache-to: type=gha,mode=max,scope=${{ matrix.service }}
           cache-from: type=local,src=/tmp/.buildx-cache-${{ matrix.service }}
           cache-to: type=local,mode=max,dest=/tmp/.buildx-cache-${{ matrix.service }}
           build-args: |
             ${{ matrix.service == 'frontend' && format('VITE_CLERK_PUBLISHABLE_KEY={0}', vars.VITE_CLERK_PUBLISHABLE_KEY) || '' }}
-            ${{ matrix.service == 'frontend' && format('VITE_BACKEND1_BASE_URL={0}', vars.VITE_BACKEND1_BASE_URL) || '' }}
-            ${{ matrix.service == 'frontend' && format('VITE_BACKEND2_BASE_URL={0}', vars.VITE_BACKEND2_BASE_URL) || '' }}
+            ${{ matrix.service == 'frontend' && 'VITE_BACKEND1_BASE_URL=http://backend1:3000' || '' }}
+            ${{ matrix.service == 'frontend' && 'VITE_BACKEND2_BASE_URL=http://backend2:3001' || '' }}
       - name: Re-tag and push existing image (if not changed on main)
         if: github.ref_name == 'main' && needs.changes.outputs[matrix.service] == 'false'
         run: |
-          PROD_IMAGE_NAME="${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.REPO_NAME }}-${{ matrix.service }}"
+          PROD_IMAGE_NAME="${{ secrets.DOCKER_HUB_USERNAME }}/${{ needs.changes.outputs.repo_name_lc }}-${{ matrix.service }}"
           docker pull $PROD_IMAGE_NAME:latest
           echo "${{ steps.meta.outputs.tags }}" | tr ',' '\n' | while read tag; do
             docker tag $PROD_IMAGE_NAME:latest "$tag"
@@ -151,26 +144,18 @@ jobs:
 
   export-images:
     name: 5. Export Docker Images for Release
-    needs: [prepare, build-and-push]
+    needs: [changes, prepare, build-and-push]
     if: github.ref_name == 'main' && needs.prepare.outputs.skipped == 'false'
     runs-on: ubuntu-latest
-    environment: production 
     strategy:
       matrix:
         service: [backend1, backend2, frontend]
     steps:
-      # NEW STEP: Convert repo name to lowercase
-      - name: Set repo name to lowercase
-        run: echo "REPO_NAME=$(echo ${{ github.event.repository.name }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
       - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+        run: echo "${{ secrets.DOCKER_HUB_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_HUB_USERNAME }}" --password-stdin
       - name: Pull and Export Image
         run: |
-          # FIX: Use the new lowercase env.REPO_NAME variable
-          IMAGE_NAME="${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.REPO_NAME }}-${{ matrix.service }}"
+          IMAGE_NAME="${{ secrets.DOCKER_HUB_USERNAME }}/${{ needs.changes.outputs.repo_name_lc }}-${{ matrix.service }}"
           IMAGE_TAG="${{ needs.prepare.outputs.tag }}"
           docker pull $IMAGE_NAME:$IMAGE_TAG
           docker save -o image-${{ matrix.service }}.tar $IMAGE_NAME:$IMAGE_TAG
@@ -182,22 +167,17 @@ jobs:
 
   scan-images:
     name: 6. Scan Images for Release
-    needs: [prepare, build-and-push]
+    needs: [changes, prepare, build-and-push]
     if: github.ref_name == 'main' && needs.prepare.outputs.skipped == 'false'
     runs-on: ubuntu-latest
-    environment: production
     strategy:
       matrix:
         service: [backend1, backend2, frontend]
     steps:
-      # NEW STEP: Convert repo name to lowercase
-      - name: Set repo name to lowercase
-        run: echo "REPO_NAME=$(echo ${{ github.event.repository.name }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
       - name: Scan image with Trivy and generate HTML report
         uses: aquasecurity/trivy-action@0.20.0
         with:
-          # FIX: Use the new lowercase env.REPO_NAME variable
-          image-ref: ${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.REPO_NAME }}-${{ matrix.service }}:${{ needs.prepare.outputs.tag }}
+          image-ref: ${{ secrets.DOCKER_HUB_USERNAME }}/${{ needs.changes.outputs.repo_name_lc }}-${{ matrix.service }}:${{ needs.prepare.outputs.tag }}
           format: 'template'
           template: '@/contrib/html.tpl'
           output: 'trivy-report.html'
@@ -212,12 +192,12 @@ jobs:
 
   deploy-to-pages:
     name: 7. Deploy Site and Reports to GitHub Pages
-    needs: [changes, prepare, scan-images]
+    needs: [prepare, scan-images]
     if: github.ref_name == 'main' && needs.prepare.outputs.skipped == 'false'
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -225,12 +205,11 @@ jobs:
           node-version: '20'
           cache: 'yarn'
           cache-dependency-path: frontend/yarn.lock
-      - name: Build Frontend with Yarn
-        if: needs.changes.outputs.frontend == 'true'
+      - name: Build Frontend for GitHub Pages
         run: |
           cd frontend
           yarn install --frozen-lockfile
-          yarn build
+          VITE_BASE_URL='/reetwiz-fellowblogs-cd/' yarn build
       - name: Download all scan reports
         uses: actions/download-artifact@v4
         with:
@@ -245,7 +224,103 @@ jobs:
           CONTENT_B2=$(awk '/<body/,/<\/body>/' reports/trivy-report-backend2/trivy-report.html | sed '1d;$d')
           CONTENT_FE=$(awk '/<body/,/<\/body>/' reports/trivy-report-frontend/trivy-report.html | sed '1d;$d')
           cat <<EOF > _site/scan/index.html
-          <!DOCTYPE html><html><head><title>Consolidated Trivy Scan Report</title><style>body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif; margin: 2em; line-height: 1.5; } h1, h2 { border-bottom: 2px solid #eaecef; padding-bottom: 0.3em; } h1 { font-size: 2em; } h2 { font-size: 1.5em; margin-top: 2em; } hr { height: .25em; padding: 0; margin: 36px 0; background-color: #d0d7de; border: 0; } .trivy-container { margin: 2em; } table { border-collapse: collapse; margin: 1em 0; width: 100%; } th, td { border: 1px solid #ddd; padding: 8px; text-align: left; } th { background-color: #f2f2f2; }</style></head><body><h1>Consolidated Trivy Scan Report for Release ${{ needs.prepare.outputs.tag }}</h1><h2>Backend1 Scan Results</h2>${CONTENT_B1}<hr><h2>Backend2 Scan Results</h2>${CONTENT_B2}<hr><h2>Frontend Scan Results</h2>${CONTENT_FE}</body></html>
+          <!DOCTYPE html>
+          <html>
+          <head>
+          <title>Consolidated Trivy Scan Report</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <style>
+            body { 
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif; 
+              margin: 2em; 
+              line-height: 1.5; 
+            }
+            h1 { 
+              border-bottom: 2px solid #eaecef; 
+              padding-bottom: 0.3em; 
+              font-size: 2em; 
+            }
+            .tab {
+              overflow: hidden;
+              border: 1px solid #ccc;
+              background-color: #f1f1f1;
+              border-radius: 5px 5px 0 0;
+            }
+            .tab button {
+              background-color: inherit;
+              float: left;
+              border: none;
+              outline: none;
+              cursor: pointer;
+              padding: 14px 16px;
+              transition: 0.3s;
+              font-size: 17px;
+              font-weight: 600;
+            }
+            .tab button:hover {
+              background-color: #ddd;
+            }
+            .tab button.active {
+              background-color: #ccc;
+            }
+            .tabcontent {
+              display: none;
+              padding: 12px;
+              border: 1px solid #ccc;
+              border-top: none;
+              border-radius: 0 0 5px 5px;
+            }
+            .tabcontent table { 
+              border-collapse: collapse; 
+              margin: 1em 0; 
+              width: 100%; 
+            }
+            .tabcontent th, .tabcontent td { 
+              border: 1px solid #ddd; 
+              padding: 8px; 
+              text-align: left; 
+            }
+            .tabcontent th { 
+              background-color: #f2f2f2; 
+            }
+          </style>
+          </head>
+          <body>
+          <h1>Consolidated Trivy Scan Report for Release ${{ needs.prepare.outputs.tag }}</h1>
+          <div class="tab">
+            <button class="tablinks active" onclick="openTab(event, 'Backend1')">Backend 1</button>
+            <button class="tablinks" onclick="openTab(event, 'Backend2')">Backend 2</button>
+            <button class="tablinks" onclick="openTab(event, 'Frontend')">Frontend</button>
+          </div>
+          <div id="Backend1" class="tabcontent" style="display:block;">
+            <h2>Backend1 Scan Results</h2>
+            ${CONTENT_B1}
+          </div>
+          <div id="Backend2" class="tabcontent">
+            <h2>Backend2 Scan Results</h2>
+            ${CONTENT_B2}
+          </div>
+          <div id="Frontend" class="tabcontent">
+            <h2>Frontend Scan Results</h2>
+            ${CONTENT_FE}
+          </div>
+          <script>
+          function openTab(evt, tabName) {
+            var i, tabcontent, tablinks;
+            tabcontent = document.getElementsByClassName("tabcontent");
+            for (i = 0; i < tabcontent.length; i++) {
+              tabcontent[i].style.display = "none";
+            }
+            tablinks = document.getElementsByClassName("tablinks");
+            for (i = 0; i < tablinks.length; i++) {
+              tablinks[i].className = tablinks[i].className.replace(" active", "");
+            }
+            document.getElementById(tabName).style.display = "block";
+            evt.currentTarget.className += " active";
+          }
+          </script>
+          </body>
+          </html>
           EOF
       - uses: actions/upload-pages-artifact@v3
         with:
@@ -256,66 +331,30 @@ jobs:
         
   deploy-to-vm:
     name: 8. Deploy to Production VM
-    needs: [prepare, build-and-push]
-    if: github.ref_name == 'main' && needs.prepare.outputs.skipped == 'false'
-    runs-on: ubuntu-latest
-    environment: production
+    needs: [build-and-push]
+    if: github.ref_name == 'main'
+    runs-on: backend-runner
     steps:
-      - name: Checkout production-ready files
-        uses: actions/checkout@v4
-      # NEW STEP: Convert repo name to lowercase
-      - name: Set repo name to lowercase
-        run: echo "REPO_NAME=$(echo ${{ github.event.repository.name }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
-      - name: Deploy to VM via SCP and SSH
+      - name: Trigger Deployment on VM
         uses: easingthemes/ssh-deploy@main
         with:
           SSH_PRIVATE_KEY: ${{ secrets.VM_SSH_PRIVATE_KEY }}
           REMOTE_HOST: ${{ secrets.VM_HOST }}
           REMOTE_USER: ${{ secrets.VM_USERNAME }}
-          SOURCE: "docker-compose.prod.yml"
           TARGET: "/home/reetwiz/fellowblogs"
           SCRIPT_AFTER: |
             set -e
             cd /home/reetwiz/fellowblogs
-
-            echo "--- Logging into Docker Hub ---"
-            echo "${{ secrets.DOCKER_HUB_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_HUB_USERNAME }}" --password-stdin
-
-            echo "--- Creating .env file for Docker Compose ---"
-            cat <<EOF > .env
-            # Database Credentials
-            POSTGRES_USER=${{ vars.POSTGRES_USER }}
-            POSTGRES_DB=${{ vars.POSTGRES_DB }}
-            POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
-            # Backend Configuration
-            NODE_ENV=${{ vars.NODE_ENV }}
-            DB_HOST=${{ vars.DB_HOST }}
-            DB_PORT=${{ vars.DB_PORT }}
-            DB_USER=${{ vars.DB_USER }}
-            DB_NAME=${{ vars.DB_NAME }}
-            DB_PASSWORD=${{ secrets.DB_PASSWORD }}
-            DB_CLIENT=${{ vars.DB_CLIENT }}
-            CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
-            CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
-            # Docker Image Tags
-            # FIX: Use the new lowercase env.REPO_NAME variable
-            DOCKER_IMAGE_BACKEND1=${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.REPO_NAME }}-backend1:latest
-            DOCKER_IMAGE_BACKEND2=${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.REPO_NAME }}-backend2:latest
-            DOCKER_IMAGE_FRONTEND=${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.REPO_NAME }}-frontend:latest
-            EOF
-
             echo "--- Pulling latest images ---"
-            docker-compose -f docker-compose.prod.yml --env-file .env pull
-
-            echo "--- Starting services ---"
-            docker-compose -f docker-compose.prod.yml --env-file .env up -d --remove-orphans
-
+            docker-compose pull
+            echo "--- Restarting services ---"
+            docker-compose up -d --remove-orphans
             echo "--- Cleaning up old images ---"
             docker image prune -af
 
   release:
     name: 9. Create GitHub Release
-    needs: [deploy-to-vm, export-images, upload-compose-artifact]
+    needs: [prepare, deploy-to-vm, export-images, upload-compose-artifact, scan-images]
     if: github.ref_name == 'main' && needs.prepare.outputs.skipped == 'false'
     runs-on: ubuntu-latest
     permissions:
