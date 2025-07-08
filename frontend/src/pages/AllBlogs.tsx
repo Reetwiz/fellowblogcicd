@@ -25,8 +25,6 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { useAllBlogs } from "../hooks/useBlogData";
 
-// THE FIX IS HERE: Use simple and safe string concatenation instead of the URL constructor.
-// This works in all environments (dev server, Docker, and GitHub Pages).
 const scanReportPath = `${import.meta.env.BASE_URL}scan/`;
 
 const AllBlogs: React.FC = () => {
