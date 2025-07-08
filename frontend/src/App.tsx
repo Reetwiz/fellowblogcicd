@@ -11,7 +11,7 @@ import SingleBlog from "./pages/SingleBlog";
 const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const theme = createTheme();
 
-// Frontend app.tsx.
+// Frontend app.tsx..
 const basename = import.meta.env.BASE_URL;
 
 function App() {
