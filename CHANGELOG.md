@@ -1,3 +1,10 @@
+## [2.0.10](https://github.com/Reetwiz/fellowblogcicd/compare/v2.0.9...v2.0.10) (2025-07-08)
+
+
+### Bug Fixes
+
+* test ([6f6fe0e](https://github.com/Reetwiz/fellowblogcicd/commit/6f6fe0ee633da55398c38f6386b96582a13220e1))
+
 ## [2.0.9](https://github.com/Reetwiz/fellowblogcicd/compare/v2.0.8...v2.0.9) (2025-07-08)
 
 
@@ -27,11 +34,4 @@
 ### Bug Fixes
 
 *  test ([a9beeae](https://github.com/Reetwiz/fellowblogcicd/commit/a9beeaea7747b0feecf79fb29c09d01b8abde3f3))
-
-## [2.0.5](https://github.com/Reetwiz/fellowblogcicd/compare/v2.0.4...v2.0.5) (2025-07-07)
-
-
-### Bug Fixes
-
-*  test ([3992ac8](https://github.com/Reetwiz/fellowblogcicd/commit/3992ac810e6e07d5df488e34dcb2db5839031558))
 
