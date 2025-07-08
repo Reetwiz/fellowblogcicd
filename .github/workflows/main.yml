@@ -1,0 +1,31 @@
+# FILE: .github/workflows/manual-deploy.yml
+
+name: Manual Deploy to VM
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy-to-vm:
+    name: Deploy to Production VM
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: SSH into VM and Deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USERNAME }}
+          key: ${{ secrets.VM_SSH_PRIVATE_KEY }}
+          port: 22
+          script: |
+            cd /home/reetwiz/fellowblogs/
+
+            echo "Pulling latest images from Docker Hub..."
+            docker compose pull
+
+            echo "Starting services with docker compose..."
+            docker compose up -d
+
+            echo "Cleaning up dangling images..."
+            docker image prune -f
