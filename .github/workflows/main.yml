@@ -1,17 +1,15 @@
-# FILE: .github/workflows/manual-deploy.yml
-
-name: Manual Deploy to VM
+name: Manual Deploy to VM (Test Connection)
 
 on:
   workflow_dispatch:
 
 jobs:
-  deploy-to-vm:
-    name: Deploy to Production VM
-    runs-on: backend-runner
+  test-vm-connection:
+    name: Test SSH Connection and Write Permission
+    runs-on: ubuntu-latest
 
     steps:
-      - name: SSH into VM and Deploy
+      - name: SSH into VM and create a test file
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VM_HOST }}
@@ -20,12 +18,7 @@ jobs:
           port: 22
           script: |
             cd /home/reetwiz/fellowblogs/
-
-            echo "Pulling latest images from Docker Hub..."
-            docker compose pull
-
-            echo "Starting services with docker compose..."
-            docker compose up -d
-
-            echo "Cleaning up dangling images..."
-            docker image prune -f
+            echo "Creating a test file to verify connection..."
+            echo "File created successfully by GitHub Actions on $(date)" > github_actions_test.txt
+            echo "Test file created. Directory contents:"
+            ls -l
