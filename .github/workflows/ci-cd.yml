@@ -10,12 +10,12 @@ on:
       - 'backend2/**'
       - 'frontend/**'
       # - '.github/workflows/ci-cd.yml'
-      - 'docker-compose.prod.yml'
+      - 'docker-compose.yml'
       - '!**.md'
-      - '!**/README.md'
+      - '!**/README.md' 
 
 permissions:
-  contents: write
+  contents: write 
   packages: write
   pages: write
   id-token: write
@@ -67,7 +67,7 @@ jobs:
     name: 3. Build & Push - ${{ matrix.service }}
     needs: [changes, prepare]
     if: (github.ref_name == 'dev' && needs.changes.outputs.any_changed == 'true') || (github.ref_name == 'main' && needs.prepare.outputs.skipped == 'false')
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }} 
     environment:
       name: ${{ github.ref_name == 'main' && 'production' || 'development' }}
     strategy:
@@ -90,6 +90,7 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - name: Docker Metadata
         id: meta
@@ -100,6 +101,7 @@ jobs:
             type=raw,value=dev,enable=${{ github.ref_name == 'dev' }}
             type=sha,prefix=dev-,format=short,enable=${{ github.ref_name == 'dev' }}
             type=raw,value=latest,enable=${{ github.ref_name == 'main' }}
+            # FIX: Prepend 'v' to match the Git tag from conventional-changelog-action
             type=semver,pattern=v{{version}},value=${{ needs.prepare.outputs.version }},enable=${{ github.ref_name == 'main' }}
             type=semver,pattern=v{{major}}.{{minor}},value=${{ needs.prepare.outputs.version }},enable=${{ github.ref_name == 'main' }}
       - name: Build and push Docker image (if changed)
@@ -111,6 +113,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # cache-from: type=gha,scope=${{ matrix.service }}
+          # cache-to: type=gha,mode=max,scope=${{ matrix.service }}
           cache-from: type=local,src=/tmp/.buildx-cache-${{ matrix.service }}
           cache-to: type=local,mode=max,dest=/tmp/.buildx-cache-${{ matrix.service }}
           build-args: |
@@ -143,18 +147,19 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: docker-compose-file
-          path: docker-compose.prod.yml
+          path: docker-compose.yml
 
   export-images:
     name: 5. Export Docker Images for Release
     needs: [prepare, build-and-push]
     if: github.ref_name == 'main' && needs.prepare.outputs.skipped == 'false'
     runs-on: ubuntu-latest
-    environment: production
+    environment: production 
     strategy:
       matrix:
         service: [backend1, backend2, frontend]
     steps:
+      # NEW STEP: Convert repo name to lowercase
       - name: Set repo name to lowercase
         run: echo "REPO_NAME=$(echo ${{ github.event.repository.name }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
       - name: Log in to Docker Hub
@@ -164,6 +169,7 @@ jobs:
           password: ${{ secrets.DOCKER_HUB_PASSWORD }}
       - name: Pull and Export Image
         run: |
+          # FIX: Use the new lowercase env.REPO_NAME variable
           IMAGE_NAME="${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.REPO_NAME }}-${{ matrix.service }}"
           IMAGE_TAG="${{ needs.prepare.outputs.tag }}"
           docker pull $IMAGE_NAME:$IMAGE_TAG
@@ -184,11 +190,13 @@ jobs:
       matrix:
         service: [backend1, backend2, frontend]
     steps:
+      # NEW STEP: Convert repo name to lowercase
       - name: Set repo name to lowercase
         run: echo "REPO_NAME=$(echo ${{ github.event.repository.name }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
       - name: Scan image with Trivy and generate HTML report
         uses: aquasecurity/trivy-action@0.20.0
         with:
+          # FIX: Use the new lowercase env.REPO_NAME variable
           image-ref: ${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.REPO_NAME }}-${{ matrix.service }}:${{ needs.prepare.outputs.tag }}
           format: 'template'
           template: '@/contrib/html.tpl'
@@ -245,7 +253,7 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
-
+        
   deploy-to-vm:
     name: 8. Deploy to Production VM
     needs: [prepare, build-and-push]
@@ -255,7 +263,10 @@ jobs:
     steps:
       - name: Checkout production-ready files
         uses: actions/checkout@v4
-      - name: Deploy to VM and restart services
+      # NEW STEP: Convert repo name to lowercase
+      - name: Set repo name to lowercase
+        run: echo "REPO_NAME=$(echo ${{ github.event.repository.name }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+      - name: Deploy to VM via SCP and SSH
         uses: easingthemes/ssh-deploy@main
         with:
           SSH_PRIVATE_KEY: ${{ secrets.VM_SSH_PRIVATE_KEY }}
@@ -267,16 +278,39 @@ jobs:
             set -e
             cd /home/reetwiz/fellowblogs
 
-            echo "--- Logging into Docker Hub to pull images ---"
+            echo "--- Logging into Docker Hub ---"
             echo "${{ secrets.DOCKER_HUB_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_HUB_USERNAME }}" --password-stdin
 
-            echo "--- Pulling latest images defined in docker-compose.prod.yml ---"
-            docker compose pull
+            echo "--- Creating .env file for Docker Compose ---"
+            cat <<EOF > .env
+            # Database Credentials
+            POSTGRES_USER=${{ vars.POSTGRES_USER }}
+            POSTGRES_DB=${{ vars.POSTGRES_DB }}
+            POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+            # Backend Configuration
+            NODE_ENV=${{ vars.NODE_ENV }}
+            DB_HOST=${{ vars.DB_HOST }}
+            DB_PORT=${{ vars.DB_PORT }}
+            DB_USER=${{ vars.DB_USER }}
+            DB_NAME=${{ vars.DB_NAME }}
+            DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+            DB_CLIENT=${{ vars.DB_CLIENT }}
+            CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
+            CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
+            # Docker Image Tags
+            # FIX: Use the new lowercase env.REPO_NAME variable
+            DOCKER_IMAGE_BACKEND1=${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.REPO_NAME }}-backend1:latest
+            DOCKER_IMAGE_BACKEND2=${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.REPO_NAME }}-backend2:latest
+            DOCKER_IMAGE_FRONTEND=${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.REPO_NAME }}-frontend:latest
+            EOF
 
-            echo "--- Restarting services with the new images ---"
-            docker compose up -d --remove-orphans
+            echo "--- Pulling latest images ---"
+            docker-compose -f docker-compose.yml --env-file .env pull
 
-            echo "--- Cleaning up unused Docker images ---"
+            echo "--- Starting services ---"
+            docker-compose -f docker-compose.yml --env-file .env up -d --remove-orphans
+
+            echo "--- Cleaning up old images ---"
             docker image prune -af
 
   release:
@@ -298,7 +332,7 @@ jobs:
           name: Release ${{ needs.prepare.outputs.tag }}
           body: ${{ needs.prepare.outputs.clean_changelog }}
           files: |
-            release-artifacts/docker-compose-file/docker-compose.prod.yml
+            release-artifacts/docker-compose-file/docker-compose.yml
             release-artifacts/build-artifact-*/*.zip
             release-artifacts/trivy-report-*/*.html
             release-artifacts/docker-image-export-*/*.tar
