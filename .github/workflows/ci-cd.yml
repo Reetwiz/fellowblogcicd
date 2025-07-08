@@ -314,6 +314,13 @@ jobs:
             zip -r "${dir}.zip" "$dir"
             rm -rf "$dir"
           done
+      - name: Rename reports for unique asset names
+        run: |
+          cd release-artifacts
+          for dir in trivy-report-*; do
+            service_name=$(echo "$dir" | sed 's/trivy-report-//')
+            mv "${dir}/trivy-report.html" "${dir}/trivy-report-${service_name}.html"
+          done
       - name: Create GitHub Release and Upload Artifacts
         uses: softprops/action-gh-release@v2
         with:
