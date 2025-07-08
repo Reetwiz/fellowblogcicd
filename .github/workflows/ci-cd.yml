@@ -211,7 +211,6 @@ jobs:
           cache: 'yarn'
           cache-dependency-path: frontend/yarn.lock
       - name: Build Frontend for GitHub Pages
-        if: needs.changes.outputs.frontend == 'true'
         run: |
           cd frontend
           yarn install --frozen-lockfile
@@ -259,15 +258,15 @@ jobs:
           </div>
           <div id="Backend1" class="tabcontent">
             <h2>Backend1 Scan Results</h2>
-            \${CONTENT_B1}
+            ${CONTENT_B1}
           </div>
           <div id="Backend2" class="tabcontent">
             <h2>Backend2 Scan Results</h2>
-            \${CONTENT_B2}
+            ${CONTENT_B2}
           </div>
           <div id="Frontend" class="tabcontent">
             <h2>Frontend Scan Results</h2>
-            \${CONTENT_FE}
+            ${CONTENT_FE}
           </div>
           <script>
           function openReport(evt, reportName) {
