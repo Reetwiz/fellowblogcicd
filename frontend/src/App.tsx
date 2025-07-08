@@ -26,7 +26,7 @@ function App() {
               {/* All your routes will now work correctly in both environments */}
               <Route path="/" element={<Navigate to="/blogs" replace />} />
               <Route path="/blogs" element={<AllBlogs />} />
-              <Route path="/scan" element={<Navigate to="/scan/index.html" replace />} />
+              {/* <Route path="/scan" element={<Navigate to="/scan/index.html" replace />} /> */}
               <Route
                 path="/blogs/create"
                 element={

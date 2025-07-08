@@ -14,7 +14,7 @@ services:
       - app-net
 
   backend1:
-    image: reetwiz/fellowblogs-backend1:latest
+    image: reetwiz/fellowblogcicd-backend1:latest
     container_name: backend1
     env_file: ./backend1/.env
     restart: always
@@ -26,7 +26,7 @@ services:
       - app-net
 
   backend2:
-    image: reetwiz/fellowblogs-backend2:latest
+    image: reetwiz/fellowblogcicd-backend2:latest
     container_name: backend2
     env_file: ./backend2/.env
     restart: always
@@ -38,7 +38,7 @@ services:
       - app-net
 
   frontend:
-    image: reetwiz/fellowblogs-frontend:latest
+    image: reetwiz/fellowblogcicd-frontend:latest
     container_name: frontend
     restart: always
     depends_on:
