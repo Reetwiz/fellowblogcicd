@@ -1,3 +1,10 @@
+## [2.4.0](https://github.com/Reetwiz/fellowblogcicd/compare/v2.3.0...v2.4.0) (2025-07-09)
+
+
+### Features
+
+* feature upgrade for interface ([681c803](https://github.com/Reetwiz/fellowblogcicd/commit/681c8039d5ade1c31b9d2a957d3f73153c655c26))
+
 ## [2.3.0](https://github.com/Reetwiz/fellowblogcicd/compare/v2.2.0...v2.3.0) (2025-07-09)
 
 
@@ -29,13 +36,4 @@
 
 * Major feature introduced for scanning reports ([1372580](https://github.com/Reetwiz/fellowblogcicd/commit/137258043cf1fbf5c04fe02d28752c628c05a6fe))
 * Major feature introduced for scanning reports ([9d3ad7b](https://github.com/Reetwiz/fellowblogcicd/commit/9d3ad7b64e6de2fa22c9d57710d1ebf3e82cab20))
-
-## [1.0.0](https://github.com/Reetwiz/fellowblogcicd/compare/v0.1.5...v1.0.0) (2025-07-08)
-
-
-### ⚠ BREAKING CHANGES
-
-* breaking change
-
-* breaking change ([ee65610](https://github.com/Reetwiz/fellowblogcicd/commit/ee65610c4eafb4384ba538aa3f15aceef02033a9))
 
