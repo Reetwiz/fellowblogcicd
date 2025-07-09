@@ -1,3 +1,10 @@
+## [2.1.0](https://github.com/Reetwiz/fellowblogcicd/compare/v2.0.0...v2.1.0) (2025-07-09)
+
+
+### Features
+
+* feature added for more interface upgrade ([bbef84e](https://github.com/Reetwiz/fellowblogcicd/commit/bbef84eb44d647db73875a2e8b47f3679bed72ab))
+
 ## [2.0.0](https://github.com/Reetwiz/fellowblogcicd/compare/v1.0.0...v2.0.0) (2025-07-09)
 
 
@@ -32,11 +39,4 @@
 
 * second release ([f25b25a](https://github.com/Reetwiz/fellowblogcicd/commit/f25b25af38ad8576e1efbd52aaf17e6dff9467a6))
 * test release ([1747ddf](https://github.com/Reetwiz/fellowblogcicd/commit/1747ddf2abca8da8def1905c448f7720e987b8ff))
-
-## [0.1.3](https://github.com/Reetwiz/fellowblogcicd/compare/v0.1.2...v0.1.3) (2025-07-08)
-
-
-### Bug Fixes
-
-* test release ([f21a78a](https://github.com/Reetwiz/fellowblogcicd/commit/f21a78ac363e74d433e35d437deb327c61e274ef))
 
