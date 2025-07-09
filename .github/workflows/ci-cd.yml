@@ -312,6 +312,8 @@ jobs:
             cd /home/reetwiz/fellowblogs
             echo "--- Logging into Docker Hub ---"
             echo "${{ secrets.DOCKER_HUB_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_HUB_USERNAME }}" --password-stdin
+            echo "--- Shutting down existing services ---"
+            docker compose down
             echo "--- Pulling latest images from Docker Hub ---"
             docker compose pull
             echo "--- Restarting services with new images ---"
