@@ -35,9 +35,9 @@ jobs:
             set -e
             
             if [ "${{ github.event.inputs.service }}" = "backend1" ]; then
-              CONTAINER_NAME="fellowship-backend1"
+              CONTAINER_NAME="backend1"
             elif [ "${{ github.event.inputs.service }}" = "backend2" ]; then
-              CONTAINER_NAME="fellowship-backend2"
+              CONTAINER_NAME="backend2"
             else
               echo "Invalid service name provided."
               exit 1
