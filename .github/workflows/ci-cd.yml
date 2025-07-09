@@ -1,3 +1,5 @@
+# FILE: .github/workflows/your-workflow-name.yml
+
 name: CI/CD Pipeline
 
 on:
@@ -292,9 +294,27 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
+  deploy-to-vm-test:
+    name: 8. Deploy to VM
+    needs: [prepare, build-and-push]
+    if: github.ref_name == 'main' && needs.prepare.outputs.skipped == 'false'
+    runs-on: backend-runner
+    environment: production
+    steps:
+      - name: Deploy to VM
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USERNAME }}
+          key: ${{ secrets.VM_SSH_PRIVATE_KEY }}
+          script: |
+            echo "SSH connection successful."
+            ls -l /home/reetwiz/fellowblogs
+
   release:
     name: 9. Create GitHub Release
-    needs: [prepare, export-images, upload-compose-artifact, scan-images, build-and-push]
+    # --- UPDATED TO DEPEND ON THE NEW TEST JOB ---
+    needs: [deploy-to-vm-test, export-images, upload-compose-artifact, scan-images, build-and-push]
     if: github.ref_name == 'main' && needs.prepare.outputs.skipped == 'false'
     runs-on: ubuntu-latest
     permissions:
