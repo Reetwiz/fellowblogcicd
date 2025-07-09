@@ -294,27 +294,35 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
-  deploy-to-vm-test:
+  deploy-to-vm:
     name: 8. Deploy to VM
     needs: [prepare, build-and-push]
     if: github.ref_name == 'main' && needs.prepare.outputs.skipped == 'false'
     runs-on: backend-runner
     environment: production
     steps:
-      - name: Deploy to VM
+      - name: Deploy to VM via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USERNAME }}
           key: ${{ secrets.VM_SSH_PRIVATE_KEY }}
           script: |
-            echo "SSH connection successful."
-            ls -l /home/reetwiz/fellowblogs
+            set -e
+            cd /home/reetwiz/fellowblogs
+            echo "--- Logging into Docker Hub ---"
+            echo "${{ secrets.DOCKER_HUB_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_HUB_USERNAME }}" --password-stdin
+            echo "--- Pulling latest images from Docker Hub ---"
+            docker compose pull
+            echo "--- Restarting services with new images ---"
+            docker compose up -d --remove-orphans
+            echo "--- Cleaning up old, unused Docker images ---"
+            docker image prune -af
+            echo "--- Deployment successful ---"
 
   release:
     name: 9. Create GitHub Release
-    # --- UPDATED TO DEPEND ON THE NEW TEST JOB ---
-    needs: [deploy-to-vm-test, export-images, upload-compose-artifact, scan-images, build-and-push]
+    needs: [prepare, deploy-to-vm, export-images, upload-compose-artifact, scan-images, build-and-push]
     if: github.ref_name == 'main' && needs.prepare.outputs.skipped == 'false'
     runs-on: ubuntu-latest
     permissions:
