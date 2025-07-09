@@ -1,58 +1,50 @@
-name: Manual Database Migration
+name: Manual Database Migration (All Backends)
 
 on:
   workflow_dispatch:
     inputs:
-      service:
-        description: 'Which backend service to target?'
-        required: true
-        type: choice
-        options:
-          - backend1
-          - backend2
       action:
-        description: 'What action to perform?'
+        description: 'Action to perform'
         required: true
         type: choice
         options:
           - migrate
           - rollback
+        default: 'migrate'
 
 jobs:
-  run-db-migration:
-    name: Run DB Migration for ${{ github.event.inputs.service }}
+  run-db-commands:
+    name: Run yarn ${{ github.event.inputs.action }}
     runs-on: ubuntu-latest
-    environment: production
 
     steps:
-      - name: Execute Migration/Rollback on VM
-        uses: appleboy/ssh-action@master
+      - name: Execute command on both backend containers via SSH
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USERNAME }}
           key: ${{ secrets.VM_SSH_PRIVATE_KEY }}
           script: |
             set -e
-            
-            if [ "${{ github.event.inputs.service }}" = "backend1" ]; then
-              CONTAINER_NAME="backend1"
-            elif [ "${{ github.event.inputs.service }}" = "backend2" ]; then
-              CONTAINER_NAME="backend2"
+
+            ACTION_COMMAND="${{ github.event.inputs.action }}"
+
+            if [ "$ACTION_COMMAND" = "rollback" ]; then
+              echo "--- Rolling back 'backend2' first ---"
+              docker exec backend2 yarn rollback
+              echo "--- 'backend2' rollback successful. ---"
+
+              echo "--- Rolling back 'backend1' ---"
+              docker exec backend1 yarn rollback
+              echo "--- 'backend1' rollback successful. ---"
             else
-              echo "Invalid service name provided."
-              exit 1
+              echo "--- Migrating 'backend1' first ---"
+              docker exec backend1 yarn migrate
+              echo "--- 'backend1' migration successful. ---"
+
+              echo "--- Migrating 'backend2' ---"
+              docker exec backend2 yarn migrate
+              echo "--- 'backend2' migration successful. ---"
             fi
-            
-            echo "Targeting container: $CONTAINER_NAME"
-            echo "Executing action: ${{ github.event.inputs.action }}"
-            
-            if [ "${{ github.event.inputs.action }}" = "migrate" ]; then
-              docker exec $CONTAINER_NAME yarn knex migrate:latest
-            elif [ "${{ github.event.inputs.action }}" = "rollback" ]; then
-              docker exec $CONTAINER_NAME yarn knex migrate:rollback
-            else
-              echo "Invalid action provided."
-              exit 1
-            fi
-            
-            echo "Command executed successfully."
+
+            echo "--- All '$ACTION_COMMAND' commands completed successfully. ---"
