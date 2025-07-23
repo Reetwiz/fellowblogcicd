@@ -1,4 +1,4 @@
-// frontend/src/App.tsx.
+// frontend/src/App.tsx..
 
 import { ClerkProvider, SignedIn, SignedOut, SignInButton } from "@clerk/clerk-react";
 import { Box, Button, createTheme, CssBaseline, ThemeProvider, Typography } from "@mui/material";

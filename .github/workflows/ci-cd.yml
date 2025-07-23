@@ -246,7 +246,7 @@ jobs:
         run: |
           cd frontend
           yarn install --frozen-lockfile
-          VITE_CLERK_PUBLISHABLE_KEY=${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }} VITE_BASE_URL=/fellowblogs-semgrep/ yarn build
+          VITE_CLERK_PUBLISHABLE_KEY=${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }} VITE_BASE_URL=/fellowblogcicd/ yarn build
       - name: Download all scan reports
         uses: actions/download-artifact@v4
         with:
