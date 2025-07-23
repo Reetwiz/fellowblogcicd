@@ -1,4 +1,4 @@
-name: CI/CD 
+name: Main CI/CD and PR Pipeline
 
 on:
   pull_request:
@@ -82,7 +82,7 @@ jobs:
     name: 3. Build & Push - ${{ matrix.service }}
     needs: [changes, prepare]
     if: (github.ref_name == 'dev' && needs.changes.outputs.any_changed == 'true') || (github.ref_name == 'main' && needs.prepare.outputs.skipped == 'false')
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     environment:
       name: ${{ github.ref_name == 'main' && 'production' || 'development' }}
     strategy:
@@ -90,10 +90,13 @@ jobs:
         include:
           - service: backend1
             context: ./backend1
+            runner: backend-runner
           - service: backend2
             context: ./backend2
+            runner: backend-runner
           - service: frontend
             context: ./frontend
+            runner: frontend-runner
     steps:
       - uses: actions/checkout@v4
       - uses: docker/login-action@v3
@@ -106,7 +109,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ secrets.DOCKER_HUB_USERNAME }}/fellowblogs-semgrep-${{ matrix.service }}
+          images: ${{ secrets.DOCKER_HUB_USERNAME }}/fellowblogs-cd-${{ matrix.service }}
           tags: |
             type=raw,value=dev,enable=${{ github.ref_name == 'dev' }}
             type=sha,prefix=dev-,format=short,enable=${{ github.ref_name == 'dev' }}
@@ -131,7 +134,7 @@ jobs:
       - name: Re-tag and push existing image (if not changed on main)
         if: github.ref_name == 'main' && needs.changes.outputs[matrix.service] == 'false'
         run: |
-          PROD_IMAGE_NAME="${{ secrets.DOCKER_HUB_USERNAME }}/fellowblogs-semgrep-${{ matrix.service }}"
+          PROD_IMAGE_NAME="${{ secrets.DOCKER_HUB_USERNAME }}/fellowblogs-cd-${{ matrix.service }}"
           docker pull $PROD_IMAGE_NAME:latest
           echo "${{ steps.meta.outputs.tags }}" | tr ',' '\n' | while read tag; do
             docker tag $PROD_IMAGE_NAME:latest "$tag"
@@ -172,7 +175,7 @@ jobs:
           password: ${{ secrets.DOCKER_HUB_PASSWORD }}
       - name: Pull and Export Image
         run: |
-          IMAGE_NAME="${{ secrets.DOCKER_HUB_USERNAME }}/fellowblogs-semgrep-${{ matrix.service }}"
+          IMAGE_NAME="${{ secrets.DOCKER_HUB_USERNAME }}/fellowblogs-cd-${{ matrix.service }}"
           IMAGE_TAG="${{ needs.prepare.outputs.tag }}"
           docker pull $IMAGE_NAME:$IMAGE_TAG
           docker save -o image-${{ matrix.service }}.tar $IMAGE_NAME:$IMAGE_TAG
@@ -183,7 +186,7 @@ jobs:
           path: image-${{ matrix.service }}.tar
 
   scan-code-semgrep:
-    name: 6. Scan Code with Semgrep
+    name: 6. Scan Code with Semgrep (Main only)
     needs: changes
     if: github.ref_name == 'main' && needs.changes.outputs.any_changed == 'true'
     runs-on: ubuntu-latest
@@ -205,8 +208,8 @@ jobs:
           name: semgrep-report
           path: semgrep-report.html
 
-  scan-images-trivy:
-    name: 7. Scan Images with Trivy (for Release)
+  scan-images:
+    name: 7. Scan Images with Trivy (Main only)
     needs: [prepare, build-and-push]
     if: github.ref_name == 'main' && needs.prepare.outputs.skipped == 'false'
     runs-on: ubuntu-latest
@@ -217,7 +220,7 @@ jobs:
       - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@0.20.0
         with:
-          image-ref: ${{ secrets.DOCKER_HUB_USERNAME }}/fellowblogs-semgrep-${{ matrix.service }}:${{ needs.prepare.outputs.tag }}
+          image-ref: ${{ secrets.DOCKER_HUB_USERNAME }}/fellowblogs-cd-${{ matrix.service }}:${{ needs.prepare.outputs.tag }}
           format: 'template'
           template: '@/contrib/html.tpl'
           output: 'trivy-report.html'
@@ -230,11 +233,14 @@ jobs:
           name: trivy-report-${{ matrix.service }}
           path: trivy-report.html
 
-  build-pages:
-    name: 8. Build Site and Reports for Pages
-    needs: [prepare, scan-images-trivy, scan-code-semgrep]
+  deploy-to-pages:
+    name: 8. Deploy Site and Reports to GitHub Pages
+    needs: [prepare, scan-images, scan-code-semgrep]
     if: github.ref_name == 'main' && needs.prepare.outputs.skipped == 'false'
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -271,18 +277,13 @@ jobs:
           <title>Consolidated Scan Report</title>
           <style>
             body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif; margin: 2em; line-height: 1.5; background-color: #f6f8fa; }
-            h1 { border-bottom: 2px solid #eaecef; padding-bottom: 0.3em; }
-            h2 { margin-top: 1.5em; }
+            h1 { border-bottom: 2px solid #eaecef; padding-bottom: 0.3em; } h2 { margin-top: 1.5em; }
             .tab { overflow: hidden; border: 1px solid #ccc; background-color: #f1f1f1; border-radius: 5px 5px 0 0; }
             .tab button { background-color: inherit; float: left; border: none; outline: none; cursor: pointer; padding: 14px 16px; transition: 0.3s; font-size: 17px; }
-            .tab button:hover { background-color: #ddd; }
-            .tab button.active { background-color: #ccc; }
+            .tab button:hover { background-color: #ddd; } .tab button.active { background-color: #ccc; }
             .tabcontent { display: none; padding: 12px 24px; border: 1px solid #ccc; border-top: none; background-color: white; animation: fadeEffect 0.5s; height: 80vh; overflow-y: auto; }
-            table { border-collapse: collapse; margin: 1em 0; width: 100%; }
-            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-            th { background-color: #f2f2f2; }
-            @keyframes fadeEffect { from {opacity: 0;} to {opacity: 1;} }
-            iframe { width: 100%; height: 100%; border: none; }
+            table { border-collapse: collapse; margin: 1em 0; width: 100%; } th, td { border: 1px solid #ddd; padding: 8px; text-align: left; } th { background-color: #f2f2f2; }
+            @keyframes fadeEffect { from {opacity: 0;} to {opacity: 1;} } iframe { width: 100%; height: 100%; border: none; }
           </style>
           </head>
           <body>
@@ -293,36 +294,21 @@ jobs:
             <button class="tablinks" onclick="openReport(event, 'TrivyBackend2')">Trivy - Backend2</button>
             <button class="tablinks" onclick="openReport(event, 'TrivyFrontend')">Trivy - Frontend</button>
           </div>
-          <div id="Semgrep" class="tabcontent" style="padding:0;">
-             <iframe src="semgrep-report.html" style="width: 100%; height: 100%; border: none;"></iframe>
-          </div>
-          <div id="TrivyBackend1" class="tabcontent">
-            <h2>Trivy Scan Results - Backend1</h2>
-            ${CONTENT_B1}
-          </div>
-          <div id="TrivyBackend2" class="tabcontent">
-            <h2>Trivy Scan Results - Backend2</h2>
-            ${CONTENT_B2}
-          </div>
-          <div id="TrivyFrontend" class="tabcontent">
-            <h2>Trivy Scan Results - Frontend</h2>
-            ${CONTENT_FE}
-          </div>
+          <div id="Semgrep" class="tabcontent" style="padding:0;"><iframe src="semgrep-report.html"></iframe></div>
+          <div id="TrivyBackend1" class="tabcontent"><h2>Trivy Scan Results - Backend1</h2>${CONTENT_B1}</div>
+          <div id="TrivyBackend2" class="tabcontent"><h2>Trivy Scan Results - Backend2</h2>${CONTENT_B2}</div>
+          <div id="TrivyFrontend" class="tabcontent"><h2>Trivy Scan Results - Frontend</h2>${CONTENT_FE}</div>
           <script>
-          function openReport(evt, reportName) {
-            var i, tabcontent, tablinks;
-            tabcontent = document.getElementsByClassName("tabcontent");
-            for (i = 0; i < tabcontent.length; i++) {
-              tabcontent[i].style.display = "none";
+            function openReport(evt, reportName) {
+              var i, tabcontent, tablinks;
+              tabcontent = document.getElementsByClassName("tabcontent");
+              for (i = 0; i < tabcontent.length; i++) { tabcontent[i].style.display = "none"; }
+              tablinks = document.getElementsByClassName("tablinks");
+              for (i = 0; i < tablinks.length; i++) { tablinks[i].className = tablinks[i].className.replace(" active", "");}
+              document.getElementById(reportName).style.display = "block";
+              evt.currentTarget.className += " active";
             }
-            tablinks = document.getElementsByClassName("tablinks");
-            for (i = 0; i < tablinks.length; i++) {
-              tablinks[i].className = tablinks[i].className.replace(" active", "");
-            }
-            document.getElementById(reportName).style.display = "block";
-            evt.currentTarget.className += " active";
-          }
-          document.getElementById("defaultOpen").click();
+            document.getElementById("defaultOpen").click();
           </script>
           </body>
           </html>
@@ -330,19 +316,6 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: ./_site
-
-  deploy-pages:
-    name: 8.5 Deploy Site to GitHub Pages
-    needs: build-pages
-    if: github.ref_name == 'main'
-    runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
@@ -351,7 +324,7 @@ jobs:
     name: 9. Deploy to VM
     needs: [prepare, build-and-push]
     if: github.ref_name == 'main' && needs.prepare.outputs.skipped == 'false'
-    runs-on: runner
+    runs-on: backend-runner
     environment: production
     steps:
       - name: Deploy to VM via SSH
@@ -362,16 +335,24 @@ jobs:
           key: ${{ secrets.VM_SSH_PRIVATE_KEY }}
           script: |
             set -e
-            cd /home/reetwiz/fellowblogs-semgrep
+            echo "--- Starting deployment on ${{ secrets.VM_HOST }} ---"
+            cd /home/reetwiz/fellowblogs
+            echo "--- Current directory: $(pwd) ---"
+            echo "--- Logging into Docker Hub ---"
             echo "${{ secrets.DOCKER_HUB_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_HUB_USERNAME }}" --password-stdin
+            echo "--- Shutting down existing services ---"
             docker compose down
+            echo "--- Pulling latest images ---"
             docker compose pull
+            echo "--- Restarting services ---"
             docker compose up -d --remove-orphans
+            echo "--- Cleaning up old images ---"
             docker image prune -af
-      
+            echo "--- Deployment successful ---"
+
   release:
     name: 10. Create GitHub Release
-    needs: [prepare, deploy-to-vm, export-images, upload-compose-artifact, scan-images-trivy, scan-code-semgrep, build-and-push, deploy-pages]
+    needs: [prepare, deploy-to-vm, export-images, upload-compose-artifact, scan-images, scan-code-semgrep, build-and-push, deploy-to-pages]
     if: github.ref_name == 'main' && needs.prepare.outputs.skipped == 'false'
     runs-on: ubuntu-latest
     permissions:
