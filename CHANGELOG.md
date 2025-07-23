@@ -1,3 +1,10 @@
+## [2.4.3](https://github.com/Reetwiz/fellowblogcicd/compare/v2.4.2...v2.4.3) (2025-07-23)
+
+
+### Bug Fixes
+
+* semgrep ([05956ef](https://github.com/Reetwiz/fellowblogcicd/commit/05956ef2ac9b75b687d36eed08f5a873b5ad01e4))
+
 ## [2.4.2](https://github.com/Reetwiz/fellowblogcicd/compare/v2.4.1...v2.4.2) (2025-07-23)
 
 
@@ -25,11 +32,4 @@
 ### Features
 
 * feature added for more interface upgrade ([8df8da9](https://github.com/Reetwiz/fellowblogcicd/commit/8df8da9ff2c92441a5e20981625a7bb400236363))
-
-## [2.2.0](https://github.com/Reetwiz/fellowblogcicd/compare/v2.1.0...v2.2.0) (2025-07-09)
-
-
-### Features
-
-* feature added for more interface upgrade ([9f73887](https://github.com/Reetwiz/fellowblogcicd/commit/9f738876c5a1bb434e5cd87662b384e012d441fa))
 
